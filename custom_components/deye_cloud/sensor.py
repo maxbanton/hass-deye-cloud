@@ -5,6 +5,7 @@ from typing import Any
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -15,6 +16,7 @@ from .naming import (
     DEVICE_SENSOR_NAMES,
     STATION_SENSOR_NAMES,
     device_class_for,
+    device_sensor_enabled_default,
     humanize_key,
     map_api_unit,
     slugify_key,
@@ -62,6 +64,9 @@ class DeyeDeviceSensor(DeyeDeviceEntity, SensorEntity):
         self._attr_name = DEVICE_SENSOR_NAMES.get(key) or humanize_key(key)
         self._attr_device_class = device_class_for(key)
         self._attr_state_class = state_class_for(key)
+        if not device_sensor_enabled_default(key):
+            self._attr_entity_registry_enabled_default = False
+            self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
     @property
     def native_unit_of_measurement(self) -> str | None:

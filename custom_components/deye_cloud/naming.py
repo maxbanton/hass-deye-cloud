@@ -173,6 +173,33 @@ API_UNIT_MAP = {
 }
 
 
+# Only the most useful device measure points are enabled by default; everything
+# else is hidden (still enable-able from the UI) to keep the inverter page clean.
+IMPORTANT_DEVICE_KEYS = {
+    "SOC",
+    "BatteryPower",
+    "BatteryVoltage",
+    "TotalGridPower",
+    "TotalConsumptionPower",
+    "UPSLoadPower",
+    "Temperature- Battery",
+    "DC Temperature",
+    "AC Temperature",
+    "PVDailyPowerGenerationActive",
+    "DailyEnergyPurchased",
+    "DailyConsumption",
+    "TotalChargeEnergy",
+    "TotalDischargeEnergy",
+    "DailyChargingEnergy",
+    "DailyDischargingEnergy",
+}
+
+
+def device_sensor_enabled_default(key: str) -> bool:
+    """Whether a device sensor is shown by default. Only the important ones."""
+    return key in IMPORTANT_DEVICE_KEYS
+
+
 def map_api_unit(unit: str | None) -> str | None:
     """Translate a Deye API unit string to a Home Assistant unit, else None."""
     if not unit:

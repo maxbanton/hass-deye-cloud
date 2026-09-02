@@ -6,6 +6,7 @@ from typing import Any
 
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -39,6 +40,7 @@ class DeyeSolarSellSwitch(DeyeDeviceEntity, SwitchEntity):
 
     _attr_icon = "mdi:transmission-tower-export"
     _attr_assumed_state = True
+    _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(self, coordinator: DeyeCloudCoordinator, device_sn: str) -> None:
         super().__init__(coordinator, device_sn)
@@ -76,8 +78,8 @@ class DeyeTouSwitch(DeyeDeviceEntity, SwitchEntity):
     def __init__(self, coordinator: DeyeCloudCoordinator, device_sn: str) -> None:
         super().__init__(coordinator, device_sn)
         self._attr_unique_id = f"{device_sn}_tou_enabled"
-        self.entity_id = f"switch.{ID_PREFIX}_tou"
-        self._attr_name = "Time of Use"
+        self.entity_id = f"switch.{ID_PREFIX}_maintain_battery_level"
+        self._attr_name = "Maintain Battery Level"
 
     @property
     def is_on(self) -> bool | None:
@@ -103,3 +105,47 @@ class DeyeTouSwitch(DeyeDeviceEntity, SwitchEntity):
             _LOGGER.error("Failed to set TOU switch: %s", err)
             return
         await self.coordinator.async_request_refresh()
+
+
+class _DeyeTouSlotSwitch(DeyeDeviceEntity, SwitchEntity):
+    """One boolean field of one Time Of Use slot."""
+
+    _field = ""
+    _slug = ""
+    _label = ""
+
+    def __init__(self, coordinator: DeyeCloudCoordinator, device_sn: str, index: int) -> None:
+        super().__init__(coordinator, device_sn)
+        self._index = index
+        self._attr_unique_id = f"{device_sn}_tou{index + 1}_{self._field}"
+        self.entity_id = f"switch.{ID_PREFIX}_tou{index + 1}_{self._slug}"
+        self._attr_name = f"TOU {index + 1} {self._label}"
+
+    @property
+    def is_on(self) -> bool | None:
+        slots = tou_slots(self._device)
+        if self._index < len(slots):
+            return bool(slots[self._index].get(self._field))
+        return None
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await async_write_tou_slot(self.coordinator, self._device_sn, self._index, {self._field: True})
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await async_write_tou_slot(self.coordinator, self._device_sn, self._index, {self._field: False})
+
+
+class DeyeTouSlotGridCharge(_DeyeTouSlotSwitch):
+    _field = "enableGridCharge"
+    _slug = "grid_charge"
+    _label = "Grid Charge"
+    _attr_icon = "mdi:transmission-tower-import"
+    _attr_entity_registry_enabled_default = False
+
+
+class DeyeTouSlotGen(_DeyeTouSlotSwitch):
+    _field = "enableGeneration"
+    _slug = "gen"
+    _label = "Gen"
+    _attr_icon = "mdi:engine"
+    _attr_entity_registry_enabled_default = False

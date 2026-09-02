@@ -25,6 +25,19 @@ ORDER_POLL_INTERVAL = 2
 ORDER_POLL_TIMEOUT = 30
 
 
+def _normalize_tou_time(value: Any) -> str:
+    """Return a TOU slot time as 'HH:mm' (the update endpoint's required format).
+
+    /config/tou returns 'HHMM' (e.g. '0100'); accept that and 'H:MM'/'HH:mm'.
+    """
+    s = str(value or "").strip()
+    if ":" in s:
+        hh, _, mm = s.partition(":")
+        return f"{int(hh):02d}:{int(mm or 0):02d}"
+    digits = s.zfill(4)
+    return f"{digits[:2]}:{digits[2:4]}"
+
+
 class DeyeCloudApiError(Exception):
     """Base exception for Deye Cloud API errors."""
 
@@ -258,10 +271,18 @@ class DeyeCloudClient:
         return await self._confirm_order(result)
 
     async def async_set_tou(self, device_sn: str, items: list[dict[str, Any]]) -> Any:
-        """Set the time-of-use schedule (all 6 slots, in order)."""
+        """Set the time-of-use schedule (all 6 slots, in order).
+
+        The update endpoint requires ``time`` as ``HH:mm``, but /config/tou
+        returns it as ``HHMM`` (e.g. ``0100``); normalize so round-tripped items
+        are accepted.
+        """
+        normalized = [dict(item) for item in items]
+        for item in normalized:
+            item["time"] = _normalize_tou_time(item.get("time"))
         result = await self._request(
             "POST", "/order/sys/tou/update",
-            data={"deviceSn": device_sn, "timeUseSettingItems": items},
+            data={"deviceSn": device_sn, "timeUseSettingItems": normalized},
         )
         return await self._confirm_order(result)
 

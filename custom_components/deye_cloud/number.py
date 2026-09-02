@@ -6,7 +6,12 @@ from typing import Any
 
 from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import PERCENTAGE, UnitOfElectricCurrent, UnitOfPower
+from homeassistant.const import (
+    PERCENTAGE,
+    EntityCategory,
+    UnitOfElectricCurrent,
+    UnitOfPower,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -45,7 +50,7 @@ class DeyeBatteryMaintainSoc(DeyeDeviceEntity, NumberEntity):
 
     _attr_name = "Battery Maintain SOC"
     _attr_icon = "mdi:battery-charging-70"
-    _attr_mode = NumberMode.BOX
+    _attr_mode = NumberMode.SLIDER
     _attr_native_unit_of_measurement = PERCENTAGE
     _attr_native_min_value = 0
     _attr_native_max_value = 100
@@ -54,18 +59,31 @@ class DeyeBatteryMaintainSoc(DeyeDeviceEntity, NumberEntity):
     def __init__(self, coordinator: DeyeCloudCoordinator, device_sn: str) -> None:
         super().__init__(coordinator, device_sn)
         self._attr_unique_id = f"{device_sn}_battery_maintain_soc"
-        self.entity_id = f"number.{ID_PREFIX}_battery_maintain_soc"
+        self.entity_id = f"number.{ID_PREFIX}_maintain_battery_level_target"
+        self._attr_name = "Maintain Battery Level Target"
+        self._optimistic: int | None = None
 
     def _slots(self) -> list[dict]:
         return self._device.get("config", {}).get("timeUseSettingItems") or []
 
-    @property
-    def native_value(self) -> float | None:
+    def _current(self) -> float | None:
         socs = [s.get("soc") for s in self._slots() if isinstance(s, dict) and s.get("soc") is not None]
         try:
             return float(socs[0]) if socs else None
         except (TypeError, ValueError):
             return None
+
+    @property
+    def native_value(self) -> float | None:
+        current = self._current()
+        # The cloud takes minutes to reflect a write; show the requested value
+        # until the read-back catches up, then drop the optimistic value.
+        if self._optimistic is not None:
+            if current == self._optimistic:
+                self._optimistic = None
+            else:
+                return float(self._optimistic)
+        return current
 
     async def async_set_native_value(self, value: float) -> None:
         slots = self._slots()
@@ -78,13 +96,19 @@ class DeyeBatteryMaintainSoc(DeyeDeviceEntity, NumberEntity):
         except DeyeCloudApiError as err:
             _LOGGER.error("Failed to set battery maintain SOC: %s", err)
             return
+        self._optimistic = int(value)
+        self.async_write_ha_state()
         await self.coordinator.async_request_refresh()
 
 
 class _DeyeNumber(DeyeDeviceEntity, NumberEntity):
-    """Base set-point number; reads current value from config, writes via API."""
+    """Base set-point number; reads current value from config, writes via API.
+
+    These are set-once inverter parameters, grouped under Configuration.
+    """
 
     _attr_mode = NumberMode.BOX
+    _attr_entity_category = EntityCategory.CONFIG
     _config_key: str = ""
     _slug: str = ""
 

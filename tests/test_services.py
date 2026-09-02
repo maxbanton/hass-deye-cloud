@@ -18,3 +18,22 @@ def test_to_items_maps_screen_fields_to_api():
         "enableGridCharge": False, "enableGeneration": True,
         "voltage": 52, "enableSell": True,
     }
+
+
+import pytest
+from custom_components.deye_cloud.api import _normalize_tou_time
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        ("0100", "01:00"),
+        ("100", "01:00"),
+        ("01:00", "01:00"),
+        ("9:5", "09:05"),
+        (2100, "21:00"),
+        ("2100", "21:00"),
+    ],
+)
+def test_normalize_tou_time(value, expected):
+    assert _normalize_tou_time(value) == expected
