@@ -1,0 +1,12 @@
+{
+  "domain": "deye_cloud",
+  "name": "Deye Cloud",
+  "codeowners": ["@maxbanton"],
+  "config_flow": true,
+  "documentation": "https://github.com/maxbanton/hass-deye-cloud",
+  "integration_type": "hub",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/maxbanton/hass-deye-cloud/issues",
+  "requirements": [],
+  "version": "1.0.0"
+}

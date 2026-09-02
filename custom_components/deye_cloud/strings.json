@@ -1,0 +1,23 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Deye Cloud",
+        "description": "Enter your Deye Cloud developer credentials. Create an app at developer.deyecloud.com.",
+        "data": {
+          "region": "Region",
+          "app_id": "App ID",
+          "app_secret": "App Secret",
+          "email": "Account email",
+          "password": "Account password"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect. Check your credentials, app ID/secret and region."
+    },
+    "abort": {
+      "already_configured": "This account is already configured."
+    }
+  }
+}
