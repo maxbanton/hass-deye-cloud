@@ -56,11 +56,13 @@ outage, use a local option (RS485 with ESP32, or SolarAssistant) instead.
   from the API, so new fields a firmware exposes show up automatically.
 - Units come straight from the API payload, with correct device and state
   classes, so energy sensors feed the Energy dashboard and long term statistics.
-- Controls exposed as raw inverter parameters (no invented presets): Solar Sell
-  and Time Of Use switches; Max Charge Current, Max Discharge Current, Max Sell
-  Power and Low Battery SOC numbers; and a `set_tou_schedule` service for the
-  Time Of Use table. Names match the inverter and Deye app. Control commands are
-  asynchronous and confirmed against the order status before reporting success.
+- Controls exposed as raw inverter parameters (no invented presets): a Battery
+  Maintain SOC number (the Time Of Use Batt %, your main battery-level control);
+  Low Battery SOC, Max Charge Current, Max Discharge Current and Max Sell Power
+  numbers; Solar Sell and Time Of Use switches; and a `set_tou_schedule` service
+  for the full Time Of Use table. Names match the inverter and Deye app. Control
+  commands are asynchronous and confirmed against the order status before
+  reporting success.
 
 ## Battery charge level from automations
 
@@ -80,8 +82,14 @@ data:
 ```
 
 For full control of individual slots (different % or flags per time window) use
-the `deye_cloud.set_tou_schedule` service, and enable or disable the schedule
-with the **Time Of Use** switch or the `deye_cloud.set_tou_days` service.
+the `deye_cloud.set_tou_schedule` service.
+
+The **Time Of Use** switch is the inverter's Time Of Use master toggle (the
+checkbox on the Work Mode screen, the `touAction` parameter). It must be **on**
+for the schedule, and therefore Battery Maintain SOC, to take effect; turning it
+off makes the inverter ignore the schedule. Use `deye_cloud.set_tou_days` to
+turn it on or off and limit it to specific weekdays. The switch also exposes the
+current 6-slot schedule as its `schedule` attribute.
 
 ## Installation (HACS)
 
