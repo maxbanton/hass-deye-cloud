@@ -64,22 +64,24 @@ outage, use a local option (RS485 with ESP32, or SolarAssistant) instead.
 
 ## Battery charge level from automations
 
-The battery charge level is the inverter's Time Of Use Batt % (the same table on
-the unit's Work Mode screen). Set it from your own automations with
-`deye_cloud.set_tou_schedule`. For example, keep more reserve in winter and more
-solar headroom in summer:
+The battery charge level the inverter maintains is the Time Of Use Batt % (the
+same table on the unit's Work Mode screen). The simplest control is the
+**Battery Maintain SOC** number: set it and the integration writes that % into
+every schedule slot. Drive it from your own automations, for example keep more
+reserve in winter and more solar headroom in summer:
 
 ```yaml
-# Summer: low SOC targets so the battery leaves room for solar
-service: deye_cloud.set_tou_schedule
+# Summer: lower the maintained level so the battery leaves room for solar
+service: number.set_value
+target:
+  entity_id: number.deye_battery_maintain_soc
 data:
-  slots:
-    - {time: "00:00", power: 6000, batt: 30, grid_charge: false, gen: false}
-    - {time: "12:00", power: 6000, batt: 30, grid_charge: false, gen: false}
+  value: 30
 ```
 
-Enable or disable the schedule with the **Time Of Use** switch or the
-`deye_cloud.set_tou_days` service.
+For full control of individual slots (different % or flags per time window) use
+the `deye_cloud.set_tou_schedule` service, and enable or disable the schedule
+with the **Time Of Use** switch or the `deye_cloud.set_tou_days` service.
 
 ## Installation (HACS)
 
