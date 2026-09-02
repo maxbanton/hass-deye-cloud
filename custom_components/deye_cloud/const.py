@@ -30,17 +30,3 @@ REGIONS = {
 }
 
 COORDINATOR = "coordinator"
-
-# Control enums (raw API values)
-WORK_MODES = ["SELLING_FIRST", "ZERO_EXPORT_TO_LOAD", "ZERO_EXPORT_TO_CT"]
-WORK_MODE_LABELS = {
-    "SELLING_FIRST": "Selling First",
-    "ZERO_EXPORT_TO_LOAD": "Zero Export to Load",
-    "ZERO_EXPORT_TO_CT": "Zero Export to CT",
-}
-
-ENERGY_PATTERNS = ["BATTERY_FIRST", "LOAD_FIRST"]
-ENERGY_PATTERN_LABELS = {
-    "BATTERY_FIRST": "Battery First",
-    "LOAD_FIRST": "Load First",
-}

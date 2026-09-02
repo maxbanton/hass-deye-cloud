@@ -18,7 +18,6 @@ from homeassistant.const import (
     UnitOfTime,
 )
 
-from custom_components.deye_cloud import const
 from custom_components.deye_cloud.naming import (
     DEVICE_SENSOR_NAMES,
     STATION_SENSOR_NAMES,
@@ -124,10 +123,3 @@ def test_names_non_empty_and_slugs_unique():
     sta_slugs = [slugify_key(k) for k in STATION_SENSOR_NAMES]
     assert len(set(dev_slugs)) == len(dev_slugs)
     assert len(set(sta_slugs)) == len(sta_slugs)
-
-
-def test_select_label_maps():
-    assert set(const.WORK_MODE_LABELS) == set(const.WORK_MODES)
-    assert set(const.ENERGY_PATTERN_LABELS) == set(const.ENERGY_PATTERNS)
-    for labels in (const.WORK_MODE_LABELS, const.ENERGY_PATTERN_LABELS):
-        assert len(set(labels.values())) == len(labels)

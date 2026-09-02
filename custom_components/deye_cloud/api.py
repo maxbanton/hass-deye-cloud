@@ -189,6 +189,9 @@ class DeyeCloudClient:
     async def async_get_battery_config(self, device_sn: str) -> dict[str, Any]:
         return await self._request("POST", "/config/battery", data={"deviceSn": device_sn})
 
+    async def async_get_tou(self, device_sn: str) -> dict[str, Any]:
+        return await self._request("POST", "/config/tou", data={"deviceSn": device_sn})
+
     # --- control (asynchronous order) endpoints ------------------------------
 
     async def _confirm_order(self, result: Any) -> Any:
@@ -252,6 +255,27 @@ class DeyeCloudClient:
             "POST", "/order/sys/power/update",
             data={"deviceSn": device_sn, "powerType": power_type, "value": value},
         )
+        return await self._confirm_order(result)
+
+    async def async_set_tou(self, device_sn: str, items: list[dict[str, Any]]) -> Any:
+        """Set the time-of-use schedule (all 6 slots, in order)."""
+        result = await self._request(
+            "POST", "/order/sys/tou/update",
+            data={"deviceSn": device_sn, "timeUseSettingItems": items},
+        )
+        return await self._confirm_order(result)
+
+    async def async_set_tou_switch(
+        self, device_sn: str, enabled: bool, days: list[str] | None = None
+    ) -> Any:
+        """Enable or disable the time-of-use schedule, optionally per weekday."""
+        data: dict[str, Any] = {
+            "deviceSn": device_sn,
+            "action": "on" if enabled else "off",
+        }
+        if days:
+            data["days"] = days
+        result = await self._request("POST", "/order/sys/tou/switch", data=data)
         return await self._confirm_order(result)
 
     async def async_close(self) -> None:

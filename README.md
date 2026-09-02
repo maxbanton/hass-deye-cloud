@@ -56,9 +56,30 @@ outage, use a local option (RS485 with ESP32, or SolarAssistant) instead.
   from the API, so new fields a firmware exposes show up automatically.
 - Units come straight from the API payload, with correct device and state
   classes, so energy sensors feed the Energy dashboard and long term statistics.
-- Controls: work mode, energy pattern, solar sell, max charge current, max
-  discharge current and max sell power. Control commands are asynchronous and are
-  confirmed against the order status before reporting success.
+- Controls exposed as raw inverter parameters (no invented presets): Solar Sell
+  and Time Of Use switches; Max Charge Current, Max Discharge Current, Max Sell
+  Power and Low Battery SOC numbers; and a `set_tou_schedule` service for the
+  Time Of Use table. Names match the inverter and Deye app. Control commands are
+  asynchronous and confirmed against the order status before reporting success.
+
+## Battery charge level from automations
+
+The battery charge level is the inverter's Time Of Use Batt % (the same table on
+the unit's Work Mode screen). Set it from your own automations with
+`deye_cloud.set_tou_schedule`. For example, keep more reserve in winter and more
+solar headroom in summer:
+
+```yaml
+# Summer: low SOC targets so the battery leaves room for solar
+service: deye_cloud.set_tou_schedule
+data:
+  slots:
+    - {time: "00:00", power: 6000, batt: 30, grid_charge: false, gen: false}
+    - {time: "12:00", power: 6000, batt: 30, grid_charge: false, gen: false}
+```
+
+Enable or disable the schedule with the **Time Of Use** switch or the
+`deye_cloud.set_tou_days` service.
 
 ## Installation (HACS)
 

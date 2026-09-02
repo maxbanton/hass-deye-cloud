@@ -1,0 +1,57 @@
+set_tou_schedule:
+  name: Set Time Of Use schedule
+  description: >-
+    Write the inverter Time Of Use schedule (the Work Mode / Time Of Use table).
+    Fields match the inverter screen: Time, Power, Batt, Grid Charge, Gen.
+    Provide up to 6 slots in order.
+  fields:
+    device_sn:
+      name: Device serial
+      description: Inverter serial. Omit if only one inverter is configured.
+      required: false
+      example: "2601234567"
+      selector:
+        text:
+    slots:
+      name: Slots
+      description: >-
+        List of up to 6 slots. Each slot: time (HH:MM), power (W), batt (%),
+        grid_charge (true/false), gen (true/false); optional sell (true/false).
+      required: true
+      example: >-
+        [{"time":"01:00","power":6000,"batt":90,"grid_charge":true,"gen":false}]
+      selector:
+        object:
+
+set_tou_days:
+  name: Set Time Of Use on/off and days
+  description: Enable or disable Time Of Use, optionally limited to weekdays.
+  fields:
+    device_sn:
+      name: Device serial
+      description: Inverter serial. Omit if only one inverter is configured.
+      required: false
+      example: "2601234567"
+      selector:
+        text:
+    enabled:
+      name: Enabled
+      description: Turn Time Of Use on or off.
+      required: true
+      selector:
+        boolean:
+    days:
+      name: Days
+      description: Weekdays the schedule is active. Omit for every day.
+      required: false
+      selector:
+        select:
+          multiple: true
+          options:
+            - MONDAY
+            - TUESDAY
+            - WEDNESDAY
+            - THURSDAY
+            - FRIDAY
+            - SATURDAY
+            - SUNDAY

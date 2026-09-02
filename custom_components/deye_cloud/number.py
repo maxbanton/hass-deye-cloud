@@ -6,7 +6,7 @@ from typing import Any
 
 from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfElectricCurrent, UnitOfPower
+from homeassistant.const import PERCENTAGE, UnitOfElectricCurrent, UnitOfPower
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -29,6 +29,7 @@ async def async_setup_entry(
         entities.append(DeyeMaxChargeCurrent(coordinator, sn))
         entities.append(DeyeMaxDischargeCurrent(coordinator, sn))
         entities.append(DeyeMaxSellPower(coordinator, sn))
+        entities.append(DeyeLowBatterySoc(coordinator, sn))
     async_add_entities(entities)
 
 
@@ -109,4 +110,22 @@ class DeyeMaxSellPower(_DeyeNumber):
     async def _apply(self, value: int) -> None:
         await self.coordinator.client.async_set_power_param(
             self._device_sn, "MAX_SELL_POWER", value
+        )
+
+
+class DeyeLowBatterySoc(_DeyeNumber):
+    """Low Battery SOC (the inverter's Low Batt / battLowCapacity setting)."""
+
+    _attr_name = "Low Battery SOC"
+    _attr_icon = "mdi:battery-low"
+    _attr_native_unit_of_measurement = PERCENTAGE
+    _attr_native_min_value = 5
+    _attr_native_max_value = 100
+    _attr_native_step = 1
+    _config_key = "battLowCapacity"
+    _slug = "low_battery_soc"
+
+    async def _apply(self, value: int) -> None:
+        await self.coordinator.client.async_set_battery_param(
+            self._device_sn, "BATT_LOW", value
         )

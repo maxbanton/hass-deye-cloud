@@ -73,7 +73,11 @@ class DeyeCloudCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if not entry["data"]:
                 continue
             config: dict[str, Any] = {}
-            for fetch in (self.client.async_get_system_config, self.client.async_get_battery_config):
+            for fetch in (
+                self.client.async_get_system_config,
+                self.client.async_get_battery_config,
+                self.client.async_get_tou,
+            ):
                 try:
                     config.update(await fetch(sn))
                 except DeyeCloudApiError as err:
