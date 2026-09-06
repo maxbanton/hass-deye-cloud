@@ -56,49 +56,67 @@ outage, use a local option (RS485 with ESP32, or SolarAssistant) instead.
   from the API, so new fields a firmware exposes show up automatically.
 - Units come straight from the API payload, with correct device and state
   classes, so energy sensors feed the Energy dashboard and long term statistics.
-- Controls, in two groups on the device page. Main: **Maintain Battery Level**
-  (switch) and **Maintain Battery Level Target** (number). Configuration: Solar
-  Sell, Low Battery SOC, Max Charge Current, Max Discharge Current, Max Sell
-  Power. Plus a `set_tou_schedule` service for full Time Of Use control. Control
-  commands are asynchronous and confirmed against the order status.
+- Controls on the device page. Time Of Use is exposed slot by slot: for each of
+  the six slots a **SOC** target and a **Time Start**, with **Power**, **Voltage**,
+  **Grid Charge** and **Generator** available per slot too (disabled by default,
+  enable any you need). Alongside them a **Battery DC Charge Current** number, an
+  **Energy Pattern** select (Load First / Battery First) and the **Time Of Use**
+  master switch. Battery DC Discharge Current, Low Battery SOC, Solar Sell and Max
+  Sell Power are provided but disabled by default. A `set_tou_schedule` service
+  writes the whole table in one call. Commands are asynchronous and confirmed
+  against the order status.
+- Inputs are validated only against universal limits (SOC 0-100, slot times kept
+  in ascending order). Per-model limits are left to the inverter, which is the
+  authority: values it will not accept are rejected with a visible error rather
+  than silently dropped.
 - Non-essential sensors are hidden by default (enable any from the entity
   settings); the essentials (SOC, powers, temperatures, key energies) stay on.
 
-## Maintaining the battery level
+## Time Of Use control
 
-The inverter can hold the battery at a set level: if it drops below (for example
-after a grid outage) the inverter charges back up to it, and it discharges down
-to it. On the unit this is the Time Of Use "Batt %" table; here it is two
-controls:
+The inverter's Time Of Use table has six slots. Each slot has a start time, a
+battery **SOC** target, a **Power** limit and **Grid Charge** / **Generator**
+flags (a per-slot **Voltage** target is used instead of SOC when the inverter is
+in voltage mode, for lead-acid or no-BMS batteries). When Time Of Use is on the
+inverter holds the battery to each slot's SOC for that part of the day: it
+charges up to it and discharges down to it.
 
-- **Maintain Battery Level** (switch) turns the behaviour on or off (the
-  inverter's Time Of Use master toggle). It must be on for the level to be held.
-- **Maintain Battery Level Target** (number) is the percentage to hold. Setting
-  it writes that value into all six Time Of Use slots.
+This integration exposes the table directly as entities, so you set each value
+the way you set anything else in Home Assistant:
 
-Drive the target from your automations, for example more reserve in winter and
+- **Time Of Use** (switch) turns the schedule on or off. It must be on for the
+  slots to apply.
+- **TOU Slot N SOC** (number, N = 1-6) is the battery level to hold in that slot.
+- **TOU Slot N Time Start** (time, N = 1-6) is when the slot begins. Each slot's
+  end is the next slot's start, and times are kept in ascending order.
+- **TOU Slot N Power / Voltage / Grid Charge / Generator** are provided too but
+  disabled by default; enable the ones you want to control per slot.
+
+Editing one entity rewrites only that field of that slot and leaves the other
+five untouched.
+
+Drive the SOC targets from automations, for example more reserve in winter and
 more solar headroom in summer:
 
 ```yaml
-# Summer: lower the maintained level so the battery leaves room for solar
+# Summer: lower the held level in every slot so the battery leaves room for solar
 service: number.set_value
 target:
-  entity_id: number.deye_maintain_battery_level_target
+  entity_id:
+    - number.deye_tou1_batt
+    - number.deye_tou2_batt
+    - number.deye_tou3_batt
+    - number.deye_tou4_batt
+    - number.deye_tou5_batt
+    - number.deye_tou6_batt
 data:
   value: 30
 ```
 
-### More flexible schedules
-
-Maintain Battery Level Target sets one level across all six time slots. If you
-want a different level (or grid-charge / generator flags) per time window, you
-have two options:
-
-- Use the **`deye_cloud.set_tou_schedule`** service to write all six slots
-  individually from an automation.
-- Or configure Time Of Use directly on the **inverter's own screen**, and simply
-  **disable the Maintain Battery Level entities** in Home Assistant so this
-  integration never overwrites your custom schedule with a uniform level.
+To write several slots at once (times, powers, flags included), use the
+**`deye_cloud.set_tou_schedule`** service. Or configure Time Of Use on the
+**inverter's own screen** and simply turn the **Time Of Use** switch off here, so
+the integration never changes your schedule.
 
 
 ## Installation (HACS)

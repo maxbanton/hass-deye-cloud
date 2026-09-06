@@ -20,7 +20,7 @@ from .const import (
 from .coordinator import DeyeCloudCoordinator
 from .services import async_register_services, async_unregister_services
 
-PLATFORMS = [Platform.SENSOR, Platform.SWITCH, Platform.NUMBER]
+PLATFORMS = [Platform.SENSOR, Platform.SWITCH, Platform.NUMBER, Platform.TIME, Platform.SELECT]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

@@ -10,15 +10,18 @@ from homeassistant.const import (
     PERCENTAGE,
     EntityCategory,
     UnitOfElectricCurrent,
+    UnitOfElectricPotential,
     UnitOfPower,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .api import DeyeCloudApiError
 from .const import COORDINATOR, DOMAIN, ID_PREFIX
 from .coordinator import DeyeCloudCoordinator
 from .entity import DeyeDeviceEntity
+from .tou import TOU_SLOT_COUNT, DeyeTouSlotEntity
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -31,74 +34,15 @@ async def async_setup_entry(
     coordinator: DeyeCloudCoordinator = hass.data[DOMAIN][entry.entry_id][COORDINATOR]
     entities: list[NumberEntity] = []
     for sn in coordinator.device_sns:
-        entities.append(DeyeBatteryMaintainSoc(coordinator, sn))
         entities.append(DeyeMaxChargeCurrent(coordinator, sn))
         entities.append(DeyeMaxDischargeCurrent(coordinator, sn))
         entities.append(DeyeMaxSellPower(coordinator, sn))
         entities.append(DeyeLowBatterySoc(coordinator, sn))
+        for i in range(TOU_SLOT_COUNT):
+            entities.append(DeyeTouSlotSoc(coordinator, sn, i))
+            entities.append(DeyeTouSlotPower(coordinator, sn, i))
+            entities.append(DeyeTouSlotVoltage(coordinator, sn, i))
     async_add_entities(entities)
-
-
-class DeyeBatteryMaintainSoc(DeyeDeviceEntity, NumberEntity):
-    """The battery level the inverter maintains (the Time Of Use Batt %).
-
-    Reads the SOC target from the Time Of Use schedule and, when set, writes that
-    % into every schedule slot (keeping each slot's time, power and flags). This
-    is the main battery-level knob: lower it for solar headroom, raise it for
-    backup reserve.
-    """
-
-    _attr_name = "Battery Maintain SOC"
-    _attr_icon = "mdi:battery-charging-70"
-    _attr_mode = NumberMode.SLIDER
-    _attr_native_unit_of_measurement = PERCENTAGE
-    _attr_native_min_value = 0
-    _attr_native_max_value = 100
-    _attr_native_step = 1
-
-    def __init__(self, coordinator: DeyeCloudCoordinator, device_sn: str) -> None:
-        super().__init__(coordinator, device_sn)
-        self._attr_unique_id = f"{device_sn}_battery_maintain_soc"
-        self.entity_id = f"number.{ID_PREFIX}_maintain_battery_level_target"
-        self._attr_name = "Maintain Battery Level Target"
-        self._optimistic: int | None = None
-
-    def _slots(self) -> list[dict]:
-        return self._device.get("config", {}).get("timeUseSettingItems") or []
-
-    def _current(self) -> float | None:
-        socs = [s.get("soc") for s in self._slots() if isinstance(s, dict) and s.get("soc") is not None]
-        try:
-            return float(socs[0]) if socs else None
-        except (TypeError, ValueError):
-            return None
-
-    @property
-    def native_value(self) -> float | None:
-        current = self._current()
-        # The cloud takes minutes to reflect a write; show the requested value
-        # until the read-back catches up, then drop the optimistic value.
-        if self._optimistic is not None:
-            if current == self._optimistic:
-                self._optimistic = None
-            else:
-                return float(self._optimistic)
-        return current
-
-    async def async_set_native_value(self, value: float) -> None:
-        slots = self._slots()
-        if not slots:
-            _LOGGER.error("No Time Of Use schedule to update")
-            return
-        new = [{**s, "soc": int(value)} for s in slots]
-        try:
-            await self.coordinator.client.async_set_tou(self._device_sn, new)
-        except DeyeCloudApiError as err:
-            _LOGGER.error("Failed to set battery maintain SOC: %s", err)
-            return
-        self._optimistic = int(value)
-        self.async_write_ha_state()
-        await self.coordinator.async_request_refresh()
 
 
 class _DeyeNumber(DeyeDeviceEntity, NumberEntity):
@@ -129,21 +73,38 @@ class _DeyeNumber(DeyeDeviceEntity, NumberEntity):
         try:
             await self._apply(int(value))
         except DeyeCloudApiError as err:
-            _LOGGER.error("Failed to set %s: %s", self._attr_name, err)
-            return
+            raise HomeAssistantError(
+                f"Inverter rejected {self._attr_name} = {int(value)}: {err}"
+            ) from err
         await self.coordinator.async_request_refresh()
 
     async def _apply(self, value: int) -> None:
         raise NotImplementedError
 
 
-class DeyeMaxChargeCurrent(_DeyeNumber):
-    _attr_name = "Max Charge Current"
+# The API exposes no per-model current limit and no stable nominal voltage, so
+# there is nothing to derive a real ceiling from. Deriving one from live values
+# (e.g. RatedPower / BatteryVoltage) is wrong: the pack voltage fluctuates, so a
+# low battery would shrink the control's range and falsely limit the setting.
+# Instead this is a fixed, stable, permissive input bound only -- the inverter
+# firmware is the authority on the true per-model limit and rejects anything it
+# will not accept, which surfaces via HomeAssistantError.
+_CURRENT_UI_MAX = 250.0
+
+
+class _DeyeCurrentNumber(_DeyeNumber):
+    """Battery current set-point; the inverter enforces the real per-model limit."""
+
+    _attr_entity_category = None  # primary control, not Configuration
     _attr_icon = "mdi:current-dc"
     _attr_native_unit_of_measurement = UnitOfElectricCurrent.AMPERE
     _attr_native_min_value = 0
-    _attr_native_max_value = 250
+    _attr_native_max_value = _CURRENT_UI_MAX
     _attr_native_step = 1
+
+
+class DeyeMaxChargeCurrent(_DeyeCurrentNumber):
+    _attr_name = "Battery DC Charge Current"
     _config_key = "maxChargeCurrent"
     _slug = "max_charge_current"
 
@@ -153,13 +114,9 @@ class DeyeMaxChargeCurrent(_DeyeNumber):
         )
 
 
-class DeyeMaxDischargeCurrent(_DeyeNumber):
-    _attr_name = "Max Discharge Current"
-    _attr_icon = "mdi:current-dc"
-    _attr_native_unit_of_measurement = UnitOfElectricCurrent.AMPERE
-    _attr_native_min_value = 0
-    _attr_native_max_value = 250
-    _attr_native_step = 1
+class DeyeMaxDischargeCurrent(_DeyeCurrentNumber):
+    _attr_name = "Battery DC Discharge Current"
+    _attr_entity_registry_enabled_default = False
     _config_key = "maxDischargeCurrent"
     _slug = "max_discharge_current"
 
@@ -172,6 +129,7 @@ class DeyeMaxDischargeCurrent(_DeyeNumber):
 class DeyeMaxSellPower(_DeyeNumber):
     _attr_name = "Max Sell Power"
     _attr_icon = "mdi:transmission-tower-export"
+    _attr_entity_registry_enabled_default = False
     _attr_native_unit_of_measurement = UnitOfPower.WATT
     _attr_native_min_value = 0
     _attr_native_max_value = 30000
@@ -190,6 +148,8 @@ class DeyeLowBatterySoc(_DeyeNumber):
 
     _attr_name = "Low Battery SOC"
     _attr_icon = "mdi:battery-low"
+    _attr_entity_category = None  # primary control, not Configuration
+    _attr_entity_registry_enabled_default = False
     _attr_native_unit_of_measurement = PERCENTAGE
     _attr_native_min_value = 5
     _attr_native_max_value = 100
@@ -201,3 +161,77 @@ class DeyeLowBatterySoc(_DeyeNumber):
         await self.coordinator.client.async_set_battery_param(
             self._device_sn, "BATT_LOW", value
         )
+
+
+class _DeyeTouSlotNumber(DeyeTouSlotEntity, NumberEntity):
+    """Base for one numeric field of one Time Of Use slot."""
+
+    _domain = "number"
+    _attr_mode = NumberMode.BOX
+
+    @property
+    def native_value(self) -> float | None:
+        try:
+            return float(self._raw())
+        except (TypeError, ValueError):
+            return None
+
+    async def async_set_native_value(self, value: float) -> None:
+        try:
+            await self._commit(int(value), int(value))
+        except (DeyeCloudApiError, ValueError) as err:
+            raise HomeAssistantError(
+                f"Inverter rejected {self._attr_name} = {int(value)}: {err}"
+            ) from err
+
+
+class DeyeTouSlotSoc(_DeyeTouSlotNumber):
+    _field = "soc"
+    _slug = "soc"
+    _label = "SOC"
+    _attr_icon = "mdi:battery-charging-70"
+    _attr_mode = NumberMode.SLIDER
+    _attr_native_unit_of_measurement = PERCENTAGE
+    _attr_native_min_value = 0
+    _attr_native_max_value = 100
+    _attr_native_step = 1
+
+
+class DeyeTouSlotPower(_DeyeTouSlotNumber):
+    """Per-slot charge/discharge power; slider scales to the device's rated power."""
+
+    _field = "power"
+    _slug = "power"
+    _label = "Power"
+    _attr_icon = "mdi:flash"
+    _attr_mode = NumberMode.SLIDER
+    _attr_native_unit_of_measurement = UnitOfPower.WATT
+    _attr_native_min_value = 0
+    _attr_native_step = 100
+    _attr_entity_registry_enabled_default = False
+    _fallback_max = 16000
+
+    @property
+    def native_max_value(self) -> float:
+        # Bound the slider by what this specific inverter reports it can do, so
+        # the control is right on any model; fall back until data arrives.
+        rated = self._device.get("data", {}).get("RatedPower")
+        try:
+            rated = float(rated)
+        except (TypeError, ValueError):
+            rated = 0.0
+        return rated if rated > 0 else self._fallback_max
+
+
+class DeyeTouSlotVoltage(_DeyeTouSlotNumber):
+    """Per-slot battery target voltage (only used in voltage mode)."""
+
+    _field = "voltage"
+    _slug = "voltage"
+    _label = "Voltage"
+    _attr_icon = "mdi:sine-wave"
+    _attr_native_unit_of_measurement = UnitOfElectricPotential.VOLT
+    _attr_native_min_value = 40
+    _attr_native_max_value = 60
+    _attr_native_step = 1
+    _attr_entity_registry_enabled_default = False

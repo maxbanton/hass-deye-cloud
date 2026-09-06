@@ -8,12 +8,14 @@ from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .api import DeyeCloudApiError
 from .const import COORDINATOR, DOMAIN, ID_PREFIX
 from .coordinator import DeyeCloudCoordinator
 from .entity import DeyeDeviceEntity
+from .tou import TOU_SLOT_COUNT, DeyeTouSlotEntity
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -28,6 +30,9 @@ async def async_setup_entry(
     for sn in coordinator.device_sns:
         entities.append(DeyeSolarSellSwitch(coordinator, sn))
         entities.append(DeyeTouSwitch(coordinator, sn))
+        for i in range(TOU_SLOT_COUNT):
+            entities.append(DeyeTouSlotGridCharge(coordinator, sn, i))
+            entities.append(DeyeTouSlotGen(coordinator, sn, i))
     async_add_entities(entities)
 
 
@@ -41,6 +46,7 @@ class DeyeSolarSellSwitch(DeyeDeviceEntity, SwitchEntity):
     _attr_icon = "mdi:transmission-tower-export"
     _attr_assumed_state = True
     _attr_entity_category = EntityCategory.CONFIG
+    _attr_entity_registry_enabled_default = False
 
     def __init__(self, coordinator: DeyeCloudCoordinator, device_sn: str) -> None:
         super().__init__(coordinator, device_sn)
@@ -74,12 +80,14 @@ class DeyeTouSwitch(DeyeDeviceEntity, SwitchEntity):
     """
 
     _attr_icon = "mdi:calendar-clock"
+    _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(self, coordinator: DeyeCloudCoordinator, device_sn: str) -> None:
         super().__init__(coordinator, device_sn)
         self._attr_unique_id = f"{device_sn}_tou_enabled"
+        # entity_id kept stable (was "Maintain Battery Level") so refs/history survive
         self.entity_id = f"switch.{ID_PREFIX}_maintain_battery_level"
-        self._attr_name = "Maintain Battery Level"
+        self._attr_name = "Time Of Use"
 
     @property
     def is_on(self) -> bool | None:
@@ -107,34 +115,31 @@ class DeyeTouSwitch(DeyeDeviceEntity, SwitchEntity):
         await self.coordinator.async_request_refresh()
 
 
-class _DeyeTouSlotSwitch(DeyeDeviceEntity, SwitchEntity):
-    """One boolean field of one Time Of Use slot."""
+class _DeyeTouSlotSwitch(DeyeTouSlotEntity, SwitchEntity):
+    """One boolean field of one Time Of Use slot (read-modify-write)."""
 
-    _field = ""
-    _slug = ""
-    _label = ""
-
-    def __init__(self, coordinator: DeyeCloudCoordinator, device_sn: str, index: int) -> None:
-        super().__init__(coordinator, device_sn)
-        self._index = index
-        self._attr_unique_id = f"{device_sn}_tou{index + 1}_{self._field}"
-        self.entity_id = f"switch.{ID_PREFIX}_tou{index + 1}_{self._slug}"
-        self._attr_name = f"TOU {index + 1} {self._label}"
+    _domain = "switch"
 
     @property
     def is_on(self) -> bool | None:
-        slots = tou_slots(self._device)
-        if self._index < len(slots):
-            return bool(slots[self._index].get(self._field))
-        return None
+        value = self._raw()
+        return None if value is None else bool(value)
 
     async def async_turn_on(self, **kwargs: Any) -> None:
-        await async_write_tou_slot(self.coordinator, self._device_sn, self._index, {self._field: True})
+        await self._toggle(True)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
-        await async_write_tou_slot(self.coordinator, self._device_sn, self._index, {self._field: False})
+        await self._toggle(False)
+
+    async def _toggle(self, enabled: bool) -> None:
+        try:
+            await self._commit(enabled, enabled)
+        except DeyeCloudApiError as err:
+            raise HomeAssistantError(f"Inverter rejected {self._attr_name}: {err}") from err
 
 
+# Disabled by default: users typically set grid-charge / generator behaviour on
+# the inverter first, then enable these in HA only if they want per-slot control.
 class DeyeTouSlotGridCharge(_DeyeTouSlotSwitch):
     _field = "enableGridCharge"
     _slug = "grid_charge"
@@ -146,6 +151,6 @@ class DeyeTouSlotGridCharge(_DeyeTouSlotSwitch):
 class DeyeTouSlotGen(_DeyeTouSlotSwitch):
     _field = "enableGeneration"
     _slug = "gen"
-    _label = "Gen"
+    _label = "Generator"
     _attr_icon = "mdi:engine"
     _attr_entity_registry_enabled_default = False
