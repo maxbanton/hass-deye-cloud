@@ -10,10 +10,14 @@ from .api import DeyeCloudClient
 from .const import (
     CONF_APP_ID,
     CONF_APP_SECRET,
+    CONF_CONFIG_INTERVAL,
     CONF_EMAIL,
     CONF_PASSWORD,
     CONF_REGION,
+    CONF_SCAN_INTERVAL,
     COORDINATOR,
+    DEFAULT_CONFIG_INTERVAL,
+    DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     REGIONS,
 )
@@ -37,13 +41,24 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         session=async_get_clientsession(hass),
     )
 
-    coordinator = DeyeCloudCoordinator(hass, client)
+    coordinator = DeyeCloudCoordinator(
+        hass,
+        client,
+        scan_interval=entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+        config_interval=entry.options.get(CONF_CONFIG_INTERVAL, DEFAULT_CONFIG_INTERVAL),
+    )
     await coordinator.async_config_entry_first_refresh()
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {COORDINATOR: coordinator}
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     async_register_services(hass)
+    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
     return True
+
+
+async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload the entry when its polling options change."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

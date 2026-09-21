@@ -76,7 +76,7 @@ class _DeyeNumber(DeyeDeviceEntity, NumberEntity):
             raise HomeAssistantError(
                 f"Inverter rejected {self._attr_name} = {int(value)}: {err}"
             ) from err
-        await self.coordinator.async_request_refresh()
+        await self.coordinator.async_request_config_refresh()
 
     async def _apply(self, value: int) -> None:
         raise NotImplementedError

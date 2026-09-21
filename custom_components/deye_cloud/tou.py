@@ -39,7 +39,7 @@ async def async_write_tou_slot(
     new = [dict(s) for s in slots]
     new[index] = {**new[index], **changes}
     await coordinator.client.async_set_tou(device_sn, new)
-    await coordinator.async_request_refresh()
+    await coordinator.async_request_config_refresh()
 
 
 class DeyeTouSlotEntity(DeyeDeviceEntity):

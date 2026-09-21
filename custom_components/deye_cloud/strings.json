@@ -19,5 +19,17 @@
     "abort": {
       "already_configured": "This account is already configured."
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Polling",
+        "description": "Deye loggers upload to the cloud every 3-5 minutes, and the API is quota limited. Lower intervals mean fresher data and more API calls.",
+        "data": {
+          "scan_interval": "Measurement poll interval (seconds)",
+          "config_interval": "Inverter settings poll interval (minutes)"
+        }
+      }
+    }
   }
 }

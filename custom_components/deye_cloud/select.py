@@ -70,4 +70,4 @@ class DeyeEnergyPatternSelect(DeyeDeviceEntity, SelectEntity):
             raise HomeAssistantError(f"Inverter rejected Energy Pattern: {err}") from err
         self._optimistic = api_value
         self.async_write_ha_state()
-        await self.coordinator.async_request_refresh()
+        await self.coordinator.async_request_config_refresh()

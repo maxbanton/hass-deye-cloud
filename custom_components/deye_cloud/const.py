@@ -13,7 +13,31 @@ CONF_EMAIL = "email"
 CONF_PASSWORD = "password"
 CONF_REGION = "region"
 
-DEFAULT_SCAN_INTERVAL = 60  # seconds
+# Option keys
+CONF_SCAN_INTERVAL = "scan_interval"
+CONF_CONFIG_INTERVAL = "config_interval"
+
+# Loggers upload to the Deye Cloud roughly every 3-5 minutes, so polling faster
+# than that returns the same values and only burns API quota.
+DEFAULT_SCAN_INTERVAL = 180  # seconds
+MIN_SCAN_INTERVAL = 30
+MAX_SCAN_INTERVAL = 3600
+
+# Inverter configuration (system/battery/TOU) only changes when something writes
+# it, so it is read on a slow tier plus a forced re-read after our own writes.
+DEFAULT_CONFIG_INTERVAL = 15  # minutes
+MIN_CONFIG_INTERVAL = 1
+MAX_CONFIG_INTERVAL = 1440
+
+# The station/device inventory is near-static; re-read it only for discovery.
+INVENTORY_INTERVAL = 3600  # seconds
+
+# Polls that re-read config after a write, so an optimistic value converges on
+# the cloud read-back (which lags a write by a minute or two).
+CONFIG_CATCHUP_POLLS = 5
+
+# Upper bound for the rate-limit backoff.
+MAX_BACKOFF_INTERVAL = 1800  # seconds
 
 REGION_EU = "eu"
 REGION_US = "us"

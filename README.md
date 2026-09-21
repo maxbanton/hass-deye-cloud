@@ -138,10 +138,34 @@ Device Monitoring* and *Commission Control* permissions, then provide:
 | App ID and App Secret | From your Deye developer application |
 | Email and Password | Your Deye Cloud account login |
 
+### Polling and API usage
+
+Deye has announced usage tracking, quotas and rate limits for the Cloud
+OpenAPI, so this integration is deliberately frugal with calls. It polls in
+tiers: measurements every cycle, the station and device inventory hourly, and
+inverter settings (system, battery, Time Of Use) only every few minutes, plus a
+short burst of re-reads right after this integration writes a setting.
+
+Two intervals are adjustable under **Settings > Devices & Services > Deye Cloud
+> Configure**:
+
+| Option | Default | What it controls |
+|--------|---------|------------------|
+| Measurement poll interval | 180 s | How often live station and device data is read |
+| Inverter settings poll interval | 15 min | How often system, battery and Time Of Use settings are re-read |
+
+Loggers upload to the Deye Cloud only every 3 to 5 minutes, so polling faster
+than the default gains little and costs quota. With the defaults and a single
+inverter the integration makes roughly 1,300 API calls per day; at a 5 minute
+measurement interval, roughly 700.
+
+If the API answers with a rate limit, polling backs off automatically (doubling
+up to 30 minutes) and returns to normal once the limit clears.
+
 ## Requirements
 
 - A Deye Cloud developer application (App ID and App Secret).
-- Home Assistant 2024.1 or newer.
+- Home Assistant 2024.11 or newer.
 
 ## Disclaimer
 

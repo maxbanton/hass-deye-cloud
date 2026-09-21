@@ -17,6 +17,38 @@ API_TIMEOUT = 30
 _SUCCESS_CODES = {0, 1000000, 1106000, "0", "1000000", "1106000"}
 _AUTH_ERROR_CODES = {1001, 1002, 1003, 2101017, "1001", "1002", "1003", "2101017"}
 
+# Deye has announced usage quotas and rate limits but not yet published the
+# error codes they will be reported with, so body-level detection is by message
+# text; HTTP 429 is handled directly.
+_RATE_LIMIT_HINTS = (
+    "rate limit",
+    "ratelimit",
+    "too many request",
+    "too frequent",
+    "request too fast",
+    "quota",
+    "call limit",
+    "request limit",
+    "api limit",
+)
+
+
+def _retry_after(headers: Any) -> float | None:
+    """Seconds from a Retry-After header, if it carries a usable value."""
+    try:
+        value = headers.get("Retry-After")
+    except AttributeError:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _is_rate_limit(message: str) -> bool:
+    lowered = message.lower()
+    return any(hint in lowered for hint in _RATE_LIMIT_HINTS)
+
 # Control ("order") endpoints are asynchronous: they return an orderId and the
 # real outcome must be read from GET /order/{orderId}.
 ORDER_STATUS_SUCCESS = 666
@@ -44,6 +76,14 @@ class DeyeCloudApiError(Exception):
 
 class DeyeCloudAuthError(DeyeCloudApiError):
     """Authentication error."""
+
+
+class DeyeCloudRateLimitError(DeyeCloudApiError):
+    """The API rejected the call for exceeding a quota or rate limit."""
+
+    def __init__(self, message: str, retry_after: float | None = None) -> None:
+        super().__init__(message)
+        self.retry_after = retry_after
 
 
 class DeyeCloudClient:
@@ -100,6 +140,12 @@ class DeyeCloudClient:
                 async with ctx as response:
                     response.raise_for_status()
                     result = await response.json()
+        except aiohttp.ClientResponseError as err:
+            if err.status == 429:
+                raise DeyeCloudRateLimitError(
+                    f"HTTP 429 for {endpoint}", _retry_after(err.headers)
+                ) from err
+            raise DeyeCloudApiError(f"Connection error: {err}") from err
         except aiohttp.ClientError as err:
             raise DeyeCloudApiError(f"Connection error: {err}") from err
         except asyncio.TimeoutError as err:
@@ -110,6 +156,8 @@ class DeyeCloudClient:
             msg = result.get("msg", "Unknown error")
             if code in _AUTH_ERROR_CODES:
                 raise DeyeCloudAuthError(msg)
+            if _is_rate_limit(str(msg)):
+                raise DeyeCloudRateLimitError(f"{msg} (code {code})")
             raise DeyeCloudApiError(f"{msg} (code {code})")
 
         inner = result.get("data")
@@ -135,13 +183,22 @@ class DeyeCloudClient:
                 ) as response:
                     response.raise_for_status()
                     result = await response.json()
+        except aiohttp.ClientResponseError as err:
+            if err.status == 429:
+                raise DeyeCloudRateLimitError(
+                    "HTTP 429 while obtaining a token", _retry_after(err.headers)
+                ) from err
+            raise DeyeCloudApiError(f"Connection error: {err}") from err
         except aiohttp.ClientError as err:
             raise DeyeCloudApiError(f"Connection error: {err}") from err
         except asyncio.TimeoutError as err:
             raise DeyeCloudApiError("Request timed out") from err
 
         if result.get("code") not in _SUCCESS_CODES:
-            raise DeyeCloudAuthError(result.get("msg", "Authentication failed"))
+            msg = str(result.get("msg", "Authentication failed"))
+            if _is_rate_limit(msg):
+                raise DeyeCloudRateLimitError(msg)
+            raise DeyeCloudAuthError(msg)
 
         token = result.get("accessToken")
         if not token:

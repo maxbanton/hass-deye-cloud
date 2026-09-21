@@ -69,7 +69,7 @@ class DeyeSolarSellSwitch(DeyeDeviceEntity, SwitchEntity):
             return
         self._attr_is_on = enabled
         self.async_write_ha_state()
-        await self.coordinator.async_request_refresh()
+        await self.coordinator.async_request_config_refresh()
 
 
 class DeyeTouSwitch(DeyeDeviceEntity, SwitchEntity):
@@ -112,7 +112,7 @@ class DeyeTouSwitch(DeyeDeviceEntity, SwitchEntity):
         except DeyeCloudApiError as err:
             _LOGGER.error("Failed to set TOU switch: %s", err)
             return
-        await self.coordinator.async_request_refresh()
+        await self.coordinator.async_request_config_refresh()
 
 
 class _DeyeTouSlotSwitch(DeyeTouSlotEntity, SwitchEntity):
