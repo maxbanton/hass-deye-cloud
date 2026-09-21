@@ -1,9 +1,9 @@
 """Services for Deye Cloud (time-of-use control)."""
 from __future__ import annotations
 
+import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
 from homeassistant.core import HomeAssistant, ServiceCall
-import homeassistant.helpers.config_validation as cv
 
 from .const import COORDINATOR, DOMAIN
 

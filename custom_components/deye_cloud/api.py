@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import logging
 import time
@@ -148,7 +149,7 @@ class DeyeCloudClient:
             raise DeyeCloudApiError(f"Connection error: {err}") from err
         except aiohttp.ClientError as err:
             raise DeyeCloudApiError(f"Connection error: {err}") from err
-        except asyncio.TimeoutError as err:
+        except TimeoutError as err:
             raise DeyeCloudApiError("Request timed out") from err
 
         code = result.get("code")
@@ -191,7 +192,7 @@ class DeyeCloudClient:
             raise DeyeCloudApiError(f"Connection error: {err}") from err
         except aiohttp.ClientError as err:
             raise DeyeCloudApiError(f"Connection error: {err}") from err
-        except asyncio.TimeoutError as err:
+        except TimeoutError as err:
             raise DeyeCloudApiError("Request timed out") from err
 
         if result.get("code") not in _SUCCESS_CODES:
@@ -273,10 +274,8 @@ class DeyeCloudClient:
         while time.time() < deadline:
             status_result = await self._request("GET", f"/order/{order_id}")
             status = status_result.get("status") if isinstance(status_result, dict) else None
-            try:
+            with contextlib.suppress(TypeError, ValueError):
                 status = int(status)
-            except (TypeError, ValueError):
-                pass
             if status == ORDER_STATUS_SUCCESS:
                 return status_result
             if status not in ORDER_STATUS_PENDING:
