@@ -25,9 +25,10 @@ class DeyeDeviceEntity(CoordinatorEntity[DeyeCloudCoordinator]):
     @property
     def device_info(self) -> dict[str, Any]:
         info = self._device.get("info", {})
+        device_type = info.get("deviceType")
         return {
             "identifiers": {(DOMAIN, self._device_sn)},
-            "name": info.get("deviceType") and f"Deye {info['deviceType']}" or f"Deye {self._device_sn}",
+            "name": f"Deye {device_type}" if device_type else f"Deye {self._device_sn}",
             "manufacturer": "Deye",
             "model": info.get("deviceModel") or info.get("deviceType") or "Inverter",
             "sw_version": info.get("firmwareVersion"),

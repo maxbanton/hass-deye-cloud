@@ -4,25 +4,28 @@ from __future__ import annotations
 import logging
 
 from homeassistant.components.select import SelectEntity
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from . import DeyeCloudConfigEntry
 from .api import DeyeCloudApiError
-from .const import COORDINATOR, DOMAIN, ID_PREFIX
+from .const import ID_PREFIX
 from .coordinator import DeyeCloudCoordinator
 from .entity import DeyeDeviceEntity
 
 _LOGGER = logging.getLogger(__name__)
 
+# Writes go to a rate-limited cloud API, so they are serialized.
+PARALLEL_UPDATES = 1
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: DeyeCloudConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    coordinator: DeyeCloudCoordinator = hass.data[DOMAIN][entry.entry_id][COORDINATOR]
+    coordinator = entry.runtime_data
     async_add_entities(
         DeyeEnergyPatternSelect(coordinator, sn) for sn in coordinator.device_sns
     )
@@ -70,4 +73,4 @@ class DeyeEnergyPatternSelect(DeyeDeviceEntity, SelectEntity):
             raise HomeAssistantError(f"Inverter rejected Energy Pattern: {err}") from err
         self._optimistic = api_value
         self.async_write_ha_state()
-        await self.coordinator.async_request_refresh()
+        await self.coordinator.async_request_config_refresh()

@@ -1,4 +1,7 @@
 """Tests for the TOU service payload mapping."""
+import pytest
+
+from custom_components.deye_cloud.api import _normalize_tou_time
 from custom_components.deye_cloud.services import _to_items
 
 
@@ -18,10 +21,6 @@ def test_to_items_maps_screen_fields_to_api():
         "enableGridCharge": False, "enableGeneration": True,
         "voltage": 52, "enableSell": True,
     }
-
-
-import pytest
-from custom_components.deye_cloud.api import _normalize_tou_time
 
 
 @pytest.mark.parametrize(

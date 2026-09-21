@@ -1,4 +1,8 @@
-"""Data update coordinator for Deye Cloud."""
+"""Data update coordinator for Deye Cloud.
+
+Fetching is tiered (see :mod:`.poller`); this coordinator adapts that to Home
+Assistant and slows polling down when the API reports a rate limit.
+"""
 from __future__ import annotations
 
 import logging
@@ -6,10 +10,17 @@ from datetime import timedelta
 from typing import Any
 
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .api import DeyeCloudApiError, DeyeCloudClient
-from .const import DEFAULT_SCAN_INTERVAL, DOMAIN
+from .api import (
+    DeyeCloudApiError,
+    DeyeCloudAuthError,
+    DeyeCloudClient,
+    DeyeCloudRateLimitError,
+)
+from .const import DEFAULT_CONFIG_INTERVAL, DEFAULT_SCAN_INTERVAL, DOMAIN
+from .poller import DeyePoller, next_backoff
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -17,78 +28,65 @@ _LOGGER = logging.getLogger(__name__)
 class DeyeCloudCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Polls stations and devices and exposes their latest measure points."""
 
-    def __init__(self, hass: HomeAssistant, client: DeyeCloudClient) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        client: DeyeCloudClient,
+        scan_interval: int = DEFAULT_SCAN_INTERVAL,
+        config_interval: int = DEFAULT_CONFIG_INTERVAL,
+    ) -> None:
         super().__init__(
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=timedelta(seconds=DEFAULT_SCAN_INTERVAL),
+            update_interval=timedelta(seconds=scan_interval),
         )
         self.client = client
-        self.station_ids: list[str] = []
-        self.device_sns: list[str] = []
+        self.poller = DeyePoller(client, config_interval=config_interval)
+        self._scan_interval = scan_interval
+        self._backoff = 0.0
+
+    @property
+    def station_ids(self) -> list[str]:
+        return self.poller.station_ids
+
+    @property
+    def device_sns(self) -> list[str]:
+        return self.poller.device_sns
+
+    async def async_request_config_refresh(self) -> None:
+        """Refresh now and re-read inverter config on the next few polls."""
+        self.poller.request_config_catchup()
+        await self.async_request_refresh()
 
     async def _async_update_data(self) -> dict[str, Any]:
         try:
-            return await self._fetch()
+            data = await self.poller.async_poll()
+        except DeyeCloudAuthError as err:
+            # Credentials were revoked or changed; ask the user to sign in again.
+            raise ConfigEntryAuthFailed(str(err)) from err
+        except DeyeCloudRateLimitError as err:
+            self._apply_backoff(err.retry_after)
+            raise UpdateFailed(
+                f"Rate limited by Deye Cloud; polling every "
+                f"{int(self._backoff)}s until it clears: {err}"
+            ) from err
         except DeyeCloudApiError as err:
             raise UpdateFailed(str(err)) from err
-
-    async def _fetch(self) -> dict[str, Any]:
-        data: dict[str, Any] = {"stations": {}, "devices": {}}
-        stations = await self.client.async_get_stations_with_devices()
-
-        device_sns: list[str] = []
-        for station in stations:
-            station_id = str(station.get("id") or station.get("stationId") or "")
-            if not station_id:
-                continue
-            try:
-                latest = await self.client.async_get_station_latest(station_id)
-            except DeyeCloudApiError as err:
-                _LOGGER.debug("Station %s latest failed: %s", station_id, err)
-                latest = {}
-            data["stations"][station_id] = {"info": station, "data": latest}
-            for dev in station.get("deviceListItems", []):
-                sn = dev.get("deviceSn")
-                if sn:
-                    device_sns.append(sn)
-                    data["devices"][sn] = {"info": dev, "data": {}, "units": {}, "config": {}}
-
-        # Device latest data, batched (API allows up to 10 SNs per call).
-        for i in range(0, len(device_sns), 10):
-            batch = device_sns[i : i + 10]
-            try:
-                latest = await self.client.async_get_device_latest(batch)
-            except DeyeCloudApiError as err:
-                _LOGGER.warning("Device latest failed for %s: %s", batch, err)
-                continue
-            for sn, payload in latest.items():
-                if sn in data["devices"]:
-                    data["devices"][sn]["data"] = payload.get("data", {})
-                    data["devices"][sn]["units"] = payload.get("units", {})
-
-        # Config reads (feed the switch/select current state); best effort.
-        for sn, entry in data["devices"].items():
-            if not entry["data"]:
-                continue
-            config: dict[str, Any] = {}
-            for fetch in (
-                self.client.async_get_system_config,
-                self.client.async_get_battery_config,
-                self.client.async_get_tou,
-            ):
-                try:
-                    config.update(await fetch(sn))
-                except DeyeCloudApiError as err:
-                    _LOGGER.debug("Config read failed for %s: %s", sn, err)
-            entry["config"] = config
-
-        self.station_ids = list(data["stations"])
-        self.device_sns = [sn for sn, e in data["devices"].items() if e["data"]]
-        _LOGGER.debug(
-            "Update complete: %d stations, %d devices with data",
-            len(self.station_ids),
-            len(self.device_sns),
-        )
+        self._clear_backoff()
         return data
+
+    def _apply_backoff(self, retry_after: float | None) -> None:
+        self._backoff = next_backoff(self._backoff, self._scan_interval, retry_after)
+        self.update_interval = timedelta(seconds=self._backoff)
+        _LOGGER.warning(
+            "Deye Cloud rate limit hit; backing off to a %ds poll interval",
+            int(self._backoff),
+        )
+
+    def _clear_backoff(self) -> None:
+        if not self._backoff:
+            return
+        self._backoff = 0.0
+        self.update_interval = timedelta(seconds=self._scan_interval)
+        _LOGGER.info("Deye Cloud rate limit cleared; resuming normal polling")

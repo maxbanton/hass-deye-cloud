@@ -2,6 +2,8 @@
 import pytest
 from homeassistant.components.sensor import (
     SensorDeviceClass as DC,
+)
+from homeassistant.components.sensor import (
     SensorStateClass as SC,
 )
 
@@ -70,10 +72,14 @@ def test_humanize_fallback_uses_acronyms():
 # device_class / state_class / fallback-unit for the corrected fields
 DEVICE_EXPECTATIONS = {
     "PVDailyPowerGenerationActive": (DC.ENERGY, SC.TOTAL_INCREASING, UnitOfEnergy.KILO_WATT_HOUR),
-    "PVCumulativePowerGenerationActive": (DC.ENERGY, SC.TOTAL_INCREASING, UnitOfEnergy.KILO_WATT_HOUR),
+    "PVCumulativePowerGenerationActive": (
+        DC.ENERGY, SC.TOTAL_INCREASING, UnitOfEnergy.KILO_WATT_HOUR,
+    ),
     "CumulativeGridFeedIn": (DC.ENERGY, SC.TOTAL_INCREASING, UnitOfEnergy.KILO_WATT_HOUR),
     "TotalConsumptionPower": (DC.POWER, SC.MEASUREMENT, UnitOfPower.WATT),
-    "InverterTotalReactivePower": (DC.REACTIVE_POWER, SC.MEASUREMENT, UnitOfReactivePower.VOLT_AMPERE_REACTIVE),
+    "InverterTotalReactivePower": (
+        DC.REACTIVE_POWER, SC.MEASUREMENT, UnitOfReactivePower.VOLT_AMPERE_REACTIVE,
+    ),
     "PowerFactor": (DC.POWER_FACTOR, SC.MEASUREMENT, None),
     "GenDailyRunTime": (DC.DURATION, SC.TOTAL_INCREASING, UnitOfTime.HOURS),
     "BatteryRatedCapacity": (None, None, "Ah"),

@@ -3,9 +3,10 @@ from __future__ import annotations
 
 import voluptuous as vol
 from homeassistant.core import HomeAssistant, ServiceCall
-import homeassistant.helpers.config_validation as cv
+from homeassistant.exceptions import ServiceValidationError
+from homeassistant.helpers import config_validation as cv
 
-from .const import COORDINATOR, DOMAIN
+from .const import DOMAIN
 
 SERVICE_SET_TOU_SCHEDULE = "set_tou_schedule"
 SERVICE_SET_TOU_DAYS = "set_tou_days"
@@ -45,18 +46,28 @@ _SET_TOU_DAYS_SCHEMA = vol.Schema(
 def _resolve(hass: HomeAssistant, device_sn: str | None):
     """Return (client, device_sn); pick the only device if none given."""
     devices = []
-    for entry in hass.data.get(DOMAIN, {}).values():
-        coordinator = entry[COORDINATOR]
+    for entry in hass.config_entries.async_loaded_entries(DOMAIN):
+        coordinator = entry.runtime_data
         for sn in coordinator.device_sns:
             devices.append((coordinator.client, sn))
     if device_sn:
         for client, sn in devices:
             if sn == device_sn:
                 return client, sn
-        raise vol.Invalid(f"Unknown device_sn: {device_sn}")
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="unknown_device",
+            translation_placeholders={"device_sn": device_sn},
+        )
     if len(devices) == 1:
         return devices[0]
-    raise vol.Invalid("Multiple Deye devices configured; specify device_sn")
+    if not devices:
+        raise ServiceValidationError(
+            translation_domain=DOMAIN, translation_key="no_devices"
+        )
+    raise ServiceValidationError(
+        translation_domain=DOMAIN, translation_key="device_sn_required"
+    )
 
 
 def _to_items(slots: list[dict]) -> list[dict]:
@@ -97,9 +108,3 @@ def async_register_services(hass: HomeAssistant) -> None:
     hass.services.async_register(
         DOMAIN, SERVICE_SET_TOU_DAYS, _set_tou_days, schema=_SET_TOU_DAYS_SCHEMA
     )
-
-
-def async_unregister_services(hass: HomeAssistant) -> None:
-    for service in (SERVICE_SET_TOU_SCHEDULE, SERVICE_SET_TOU_DAYS):
-        if hass.services.has_service(DOMAIN, service):
-            hass.services.async_remove(DOMAIN, service)
