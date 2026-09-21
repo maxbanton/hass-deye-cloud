@@ -10,9 +10,15 @@ from datetime import timedelta
 from typing import Any
 
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .api import DeyeCloudApiError, DeyeCloudClient, DeyeCloudRateLimitError
+from .api import (
+    DeyeCloudApiError,
+    DeyeCloudAuthError,
+    DeyeCloudClient,
+    DeyeCloudRateLimitError,
+)
 from .const import DEFAULT_CONFIG_INTERVAL, DEFAULT_SCAN_INTERVAL, DOMAIN
 from .poller import DeyePoller, next_backoff
 
@@ -56,6 +62,9 @@ class DeyeCloudCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _async_update_data(self) -> dict[str, Any]:
         try:
             data = await self.poller.async_poll()
+        except DeyeCloudAuthError as err:
+            # Credentials were revoked or changed; ask the user to sign in again.
+            raise ConfigEntryAuthFailed(str(err)) from err
         except DeyeCloudRateLimitError as err:
             self._apply_backoff(err.retry_after)
             raise UpdateFailed(

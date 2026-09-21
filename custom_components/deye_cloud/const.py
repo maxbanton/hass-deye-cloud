@@ -52,5 +52,3 @@ REGIONS = {
         "base_url": "https://us1-developer.deyecloud.com/v1.0",
     },
 }
-
-COORDINATOR = "coordinator"

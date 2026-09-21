@@ -4,7 +4,6 @@ from __future__ import annotations
 import logging
 
 from homeassistant.components.number import NumberEntity, NumberMode
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     PERCENTAGE,
     EntityCategory,
@@ -16,21 +15,25 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from . import DeyeCloudConfigEntry
 from .api import DeyeCloudApiError
-from .const import COORDINATOR, DOMAIN, ID_PREFIX
+from .const import ID_PREFIX
 from .coordinator import DeyeCloudCoordinator
 from .entity import DeyeDeviceEntity
 from .tou import TOU_SLOT_COUNT, DeyeTouSlotEntity
 
 _LOGGER = logging.getLogger(__name__)
 
+# Writes go to a rate-limited cloud API, so they are serialized.
+PARALLEL_UPDATES = 1
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: DeyeCloudConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    coordinator: DeyeCloudCoordinator = hass.data[DOMAIN][entry.entry_id][COORDINATOR]
+    coordinator = entry.runtime_data
     entities: list[NumberEntity] = []
     for sn in coordinator.device_sns:
         entities.append(DeyeMaxChargeCurrent(coordinator, sn))

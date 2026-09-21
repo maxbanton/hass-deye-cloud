@@ -4,12 +4,12 @@ from __future__ import annotations
 from typing import Any
 
 from homeassistant.components.sensor import SensorEntity
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import COORDINATOR, DOMAIN, ID_PREFIX
+from . import DeyeCloudConfigEntry
+from .const import ID_PREFIX
 from .coordinator import DeyeCloudCoordinator
 from .entity import DeyeDeviceEntity, DeyeStationEntity
 from .naming import (
@@ -24,14 +24,17 @@ from .naming import (
     unit_fallback,
 )
 
+# Read-only entities served from the coordinator; no API calls of their own.
+PARALLEL_UPDATES = 0
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: DeyeCloudConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Create a sensor for every measure point discovered in the first poll."""
-    coordinator: DeyeCloudCoordinator = hass.data[DOMAIN][entry.entry_id][COORDINATOR]
+    coordinator = entry.runtime_data
 
     entities: list[SensorEntity] = []
     for sn in coordinator.device_sns:

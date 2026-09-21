@@ -162,6 +162,20 @@ measurement interval, roughly 700.
 If the API answers with a rate limit, polling backs off automatically (doubling
 up to 30 minutes) and returns to normal once the limit clears.
 
+## Removing the integration
+
+1. Go to **Settings > Devices & Services**, open **Deye Cloud**, and use the
+   three-dot menu on the entry to **Delete** it. That removes its devices,
+   entities and history.
+2. In HACS, open **Deye Cloud** and choose **Remove** to delete the files.
+3. Restart Home Assistant.
+
+Deleting the integration does not change anything on the inverter. Settings
+written while it was installed (Time Of Use, battery set-points) stay as they
+are, so review them on the inverter if you want the previous values back. The
+developer application stays on your Deye account until you delete it in the
+[developer portal](https://developer.deyecloud.com/).
+
 ## Requirements
 
 - A Deye Cloud developer application (App ID and App Secret).

@@ -1,6 +1,7 @@
 """Config flow for Deye Cloud."""
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 import voluptuous as vol
@@ -33,6 +34,19 @@ from .const import (
 )
 
 
+async def _async_credentials_work(hass, data: dict[str, Any]) -> bool:
+    """Return True if the given credentials authenticate against Deye Cloud."""
+    client = DeyeCloudClient(
+        base_url=REGIONS[data[CONF_REGION]]["base_url"],
+        app_id=data[CONF_APP_ID],
+        app_secret=data[CONF_APP_SECRET],
+        email=data[CONF_EMAIL],
+        password=data[CONF_PASSWORD],
+        session=async_get_clientsession(hass),
+    )
+    return await client.async_test_connection()
+
+
 class DeyeCloudConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle the Deye Cloud config flow."""
 
@@ -54,16 +68,7 @@ class DeyeCloudConfigFlow(ConfigFlow, domain=DOMAIN):
             )
             self._abort_if_unique_id_configured()
 
-            base_url = REGIONS[user_input[CONF_REGION]]["base_url"]
-            client = DeyeCloudClient(
-                base_url=base_url,
-                app_id=user_input[CONF_APP_ID],
-                app_secret=user_input[CONF_APP_SECRET],
-                email=user_input[CONF_EMAIL],
-                password=user_input[CONF_PASSWORD],
-                session=async_get_clientsession(self.hass),
-            )
-            if await client.async_test_connection():
+            if await _async_credentials_work(self.hass, user_input):
                 return self.async_create_entry(title="Deye Cloud", data=user_input)
             errors["base"] = "cannot_connect"
 
@@ -80,6 +85,41 @@ class DeyeCloudConfigFlow(ConfigFlow, domain=DOMAIN):
         )
         return self.async_show_form(
             step_id="user", data_schema=schema, errors=errors
+        )
+
+    async def async_step_reauth(
+        self, entry_data: Mapping[str, Any]
+    ) -> ConfigFlowResult:
+        """Start reauthentication after the API rejected the stored credentials."""
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Ask for the credentials again and update the entry in place.
+
+        The account password and the developer app secret are the two things
+        that change in practice; the account email and region stay as they are.
+        """
+        entry = self._get_reauth_entry()
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            if await _async_credentials_work(self.hass, {**entry.data, **user_input}):
+                return self.async_update_reload_and_abort(entry, data_updates=user_input)
+            errors["base"] = "invalid_auth"
+
+        schema = vol.Schema(
+            {
+                vol.Required(CONF_APP_SECRET, default=entry.data[CONF_APP_SECRET]): str,
+                vol.Required(CONF_PASSWORD): str,
+            }
+        )
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=schema,
+            errors=errors,
+            description_placeholders={"email": entry.data[CONF_EMAIL]},
         )
 
 

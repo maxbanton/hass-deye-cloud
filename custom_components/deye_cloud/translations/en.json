@@ -11,13 +11,23 @@
           "email": "Account email",
           "password": "Account password"
         }
+      },
+      "reauth_confirm": {
+        "title": "Deye Cloud",
+        "description": "The Deye Cloud rejected the stored credentials for {email}. Enter the current app secret and account password.",
+        "data": {
+          "app_secret": "App Secret",
+          "password": "Account password"
+        }
       }
     },
     "error": {
-      "cannot_connect": "Failed to connect. Check your credentials, app ID/secret and region."
+      "cannot_connect": "Failed to connect. Check your credentials, app ID/secret and region.",
+      "invalid_auth": "Those credentials were rejected by the Deye Cloud."
     },
     "abort": {
-      "already_configured": "This account is already configured."
+      "already_configured": "This account is already configured.",
+      "reauth_successful": "Deye Cloud credentials updated."
     }
   },
   "options": {
@@ -30,6 +40,17 @@
           "config_interval": "Inverter settings poll interval (minutes)"
         }
       }
+    }
+  },
+  "exceptions": {
+    "unknown_device": {
+      "message": "Unknown device_sn: {device_sn}"
+    },
+    "no_devices": {
+      "message": "No Deye devices are set up yet."
+    },
+    "device_sn_required": {
+      "message": "Multiple Deye devices are configured; set device_sn to pick one."
     }
   }
 }
