@@ -9,7 +9,7 @@ from custom_components.deye_cloud.api import (
     _is_rate_limit,
     _retry_after,
 )
-from custom_components.deye_cloud.const import INVENTORY_INTERVAL
+from custom_components.deye_cloud.const import INVENTORY_INTERVAL, STALE_DATA_TIMEOUT
 from custom_components.deye_cloud.poller import DeyePoller, next_backoff
 
 
@@ -20,6 +20,7 @@ class FakeClient:
         self.calls: dict[str, int] = {}
         self.fail_inventory = False
         self.rate_limit_latest = False
+        self.fail_latest = False
 
     def _count(self, name: str) -> None:
         self.calls[name] = self.calls.get(name, 0) + 1
@@ -44,6 +45,8 @@ class FakeClient:
         self._count("device_latest")
         if self.rate_limit_latest:
             raise DeyeCloudRateLimitError("slow down", 90)
+        if self.fail_latest:
+            raise DeyeCloudApiError("Connection error: 500")
         return {sn: {"data": {"Power": 1}, "units": {"Power": "W"}} for sn in device_sns}
 
     async def async_get_system_config(self, device_sn):
@@ -123,6 +126,32 @@ async def test_cached_inventory_survives_a_failed_refresh(poller):
     poller.client.fail_inventory = True
     data = await poller.async_poll()
     assert data["devices"]["SN1"]["data"] == {"Power": 1}
+
+
+async def test_last_device_data_survives_a_failed_read(poller):
+    await poller.async_poll()
+    poller.client.fail_latest = True
+    data = await poller.async_poll()
+    assert data["devices"]["SN1"]["data"] == {"Power": 1}
+    assert data["devices"]["SN1"]["units"] == {"Power": "W"}
+    assert poller.device_sns == ["SN1"]
+
+
+async def test_device_data_expires_after_the_stale_timeout(poller):
+    await poller.async_poll()
+    sn_read, payload = poller._latest["SN1"]
+    poller._latest["SN1"] = (sn_read - STALE_DATA_TIMEOUT, payload)
+    poller.client.fail_latest = True
+    data = await poller.async_poll()
+    assert data["devices"]["SN1"]["data"] == {}
+    assert poller.device_sns == []
+
+
+async def test_first_read_failure_leaves_devices_without_data(poller):
+    poller.client.fail_latest = True
+    data = await poller.async_poll()
+    assert data["devices"]["SN1"]["data"] == {}
+    assert poller.device_sns == []
 
 
 def test_backoff_doubles_from_the_scan_interval():
