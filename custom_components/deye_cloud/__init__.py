@@ -4,6 +4,7 @@ from __future__ import annotations
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.typing import ConfigType
@@ -60,6 +61,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: DeyeCloudConfigEntry) ->
         config_interval=entry.options.get(CONF_CONFIG_INTERVAL, DEFAULT_CONFIG_INTERVAL),
     )
     await coordinator.async_config_entry_first_refresh()
+    # Entities are created from what the first poll returns. If the cloud listed
+    # devices but failed to return their data, setting up now would leave every
+    # device entity unavailable until a manual reload, so retry setup instead.
+    if coordinator.data["devices"] and not coordinator.device_sns:
+        raise ConfigEntryNotReady(
+            translation_domain=DOMAIN, translation_key="no_device_data"
+        )
 
     entry.runtime_data = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

@@ -114,6 +114,17 @@ async def test_setup_retries_when_the_api_is_down(hass: HomeAssistant) -> None:
     assert entry.state is ConfigEntryState.SETUP_RETRY
 
 
+async def test_setup_retries_when_device_data_is_missing(hass: HomeAssistant) -> None:
+    entry = await _setup(
+        hass,
+        async_get_device_latest=AsyncMock(
+            side_effect=DeyeCloudApiError("Connection error: 500")
+        ),
+    )
+    assert entry.state is ConfigEntryState.SETUP_RETRY
+    assert hass.states.get("sensor.deye_soc") is None
+
+
 async def test_bad_credentials_start_a_reauth_flow(hass: HomeAssistant) -> None:
     entry = await _setup(
         hass,
