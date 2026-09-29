@@ -43,6 +43,9 @@
     }
   },
   "exceptions": {
+    "no_device_data": {
+      "message": "Deye Cloud listed devices but returned no data for them; retrying."
+    },
     "unknown_device": {
       "message": "Unknown device_sn: {device_sn}"
     },

@@ -3,7 +3,8 @@
 The Deye Cloud OpenAPI is a shared, quota-limited resource, so a poll fetches
 each kind of data only as often as it can actually change:
 
-* device measurements  -- every poll (this is the data that moves)
+* device measurements  -- every poll (this is the data that moves); if a read
+  fails, the last good values are served for up to ``STALE_DATA_TIMEOUT``
 * station measurements -- every poll (station-level aggregate)
 * station/device list  -- hourly (inventory, only needed for discovery)
 * inverter config      -- every ``config_interval`` minutes, plus a short burst
@@ -24,6 +25,7 @@ from .const import (
     DEFAULT_CONFIG_INTERVAL,
     INVENTORY_INTERVAL,
     MAX_BACKOFF_INTERVAL,
+    STALE_DATA_TIMEOUT,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -62,6 +64,7 @@ class DeyePoller:
         self._stations: list[dict[str, Any]] = []
         self._stations_read = 0.0
         self._configs: dict[str, dict[str, Any]] = {}
+        self._latest: dict[str, tuple[float, dict[str, Any]]] = {}
         self._configs_read = 0.0
         self._config_catchup = 0
 
@@ -109,9 +112,13 @@ class DeyePoller:
                 raise
             except DeyeCloudApiError as err:
                 _LOGGER.warning("Device latest failed for %s: %s", batch, err)
-                continue
+                latest = {}
             for sn, payload in latest.items():
-                if sn in data["devices"]:
+                if sn in data["devices"] and payload.get("data"):
+                    self._latest[sn] = (now, payload)
+            for sn in batch:
+                read, payload = self._latest.get(sn, (0.0, {}))
+                if payload and now - read < STALE_DATA_TIMEOUT:
                     data["devices"][sn]["data"] = payload.get("data", {})
                     data["devices"][sn]["units"] = payload.get("units", {})
 
