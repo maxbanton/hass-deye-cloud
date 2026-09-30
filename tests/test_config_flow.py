@@ -49,7 +49,10 @@ async def test_user_flow_creates_entry(hass: HomeAssistant) -> None:
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "user"
 
-    with _connection(True):
+    with (
+        _connection(True),
+        patch("custom_components.deye_cloud.async_setup_entry", return_value=True),
+    ):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], USER_INPUT
         )
@@ -103,7 +106,10 @@ async def test_reauth_updates_credentials(hass: HomeAssistant) -> None:
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "reauth_confirm"
 
-    with _connection(True):
+    with (
+        _connection(True),
+        patch("custom_components.deye_cloud.async_setup_entry", return_value=True),
+    ):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
             {CONF_APP_SECRET: "new-secret", CONF_PASSWORD: "new-password"},

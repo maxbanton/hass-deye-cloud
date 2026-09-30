@@ -1,5 +1,12 @@
 # Deye Cloud for Home Assistant
 
+[![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz)
+[![Release](https://img.shields.io/github/v/release/maxbanton/hass-deye-cloud)](https://github.com/maxbanton/hass-deye-cloud/releases)
+[![Tests](https://github.com/maxbanton/hass-deye-cloud/actions/workflows/tests.yml/badge.svg)](https://github.com/maxbanton/hass-deye-cloud/actions/workflows/tests.yml)
+[![Validate](https://github.com/maxbanton/hass-deye-cloud/actions/workflows/validate.yml/badge.svg)](https://github.com/maxbanton/hass-deye-cloud/actions/workflows/validate.yml)
+[![License](https://img.shields.io/github/license/maxbanton/hass-deye-cloud)](LICENSE)
+[![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.12%2B-41BDF5.svg)](https://www.home-assistant.io)
+
 Home Assistant integration for Deye solar inverters and hybrid energy storage
 systems, using the official [Deye Cloud OpenAPI](https://developer.deyecloud.com/).
 
@@ -121,6 +128,10 @@ the integration never changes your schedule.
 
 ## Installation (HACS)
 
+[![Open your Home Assistant instance and open this repository in HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=maxbanton&repository=hass-deye-cloud&category=integration)
+
+Or manually:
+
 1. In HACS, open the three-dot menu and choose **Custom repositories**.
 2. Add `https://github.com/maxbanton/hass-deye-cloud` with category **Integration**.
 3. Install **Deye Cloud** and restart Home Assistant.
@@ -179,7 +190,7 @@ developer application stays on your Deye account until you delete it in the
 ## Requirements
 
 - A Deye Cloud developer application (App ID and App Secret).
-- Home Assistant 2024.11 or newer.
+- Home Assistant 2024.12 or newer.
 
 ## Disclaimer
 
