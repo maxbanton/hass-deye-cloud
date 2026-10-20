@@ -36,6 +36,10 @@ INVENTORY_INTERVAL = 3600  # seconds
 # the cloud read-back (which lags a write by a minute or two).
 CONFIG_CATCHUP_POLLS = 5
 
+# A config read this long after a write is taken as the inverter's real value,
+# so a pending write that was clamped or rejected stops being shown or re-sent.
+READBACK_WINDOW = 300  # seconds
+
 # How long last-known device measurements are served when /device/latest fails,
 # so a transient cloud error does not blank every device entity for a poll.
 STALE_DATA_TIMEOUT = 900  # seconds

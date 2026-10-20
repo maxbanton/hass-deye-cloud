@@ -73,6 +73,7 @@ class DeyePoller:
         self._latest: dict[str, tuple[float, dict[str, Any]]] = {}
         self._configs_read = 0.0
         self._config_catchup = 0
+        self.config_read_at: dict[str, float] = {}
 
     def request_config_catchup(self) -> None:
         """Re-read inverter config on the next few polls.
@@ -207,6 +208,7 @@ class DeyePoller:
                     _LOGGER.debug("Config read failed for %s: %s", sn, err)
             if config:
                 self._configs[sn] = config
+                self.config_read_at[sn] = now
         self._configs_read = now
         if self._config_catchup:
             self._config_catchup -= 1

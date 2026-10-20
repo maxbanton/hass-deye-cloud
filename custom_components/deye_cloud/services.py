@@ -6,7 +6,9 @@ from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 
+from .api import _normalize_tou_time
 from .const import DOMAIN
+from .tou import set_pending_tou
 
 SERVICE_SET_TOU_SCHEDULE = "set_tou_schedule"
 SERVICE_SET_TOU_DAYS = "set_tou_days"
@@ -44,16 +46,16 @@ _SET_TOU_DAYS_SCHEMA = vol.Schema(
 
 
 def _resolve(hass: HomeAssistant, device_sn: str | None):
-    """Return (client, device_sn); pick the only device if none given."""
+    """Return (coordinator, device_sn); pick the only device if none given."""
     devices = []
     for entry in hass.config_entries.async_loaded_entries(DOMAIN):
         coordinator = entry.runtime_data
         for sn in coordinator.device_sns:
-            devices.append((coordinator.client, sn))
+            devices.append((coordinator, sn))
     if device_sn:
-        for client, sn in devices:
+        for coordinator, sn in devices:
             if sn == device_sn:
-                return client, sn
+                return coordinator, sn
         raise ServiceValidationError(
             translation_domain=DOMAIN,
             translation_key="unknown_device",
@@ -93,14 +95,24 @@ def async_register_services(hass: HomeAssistant) -> None:
         return
 
     async def _set_tou_schedule(call: ServiceCall) -> None:
-        client, sn = _resolve(call.hass, call.data.get("device_sn"))
-        await client.async_set_tou(sn, _to_items(call.data["slots"]))
+        coordinator, sn = _resolve(call.hass, call.data.get("device_sn"))
+        items = _to_items(call.data["slots"])
+        await coordinator.client.async_set_tou(sn, items)
+        # /config/tou reads times back as HHMM.
+        set_pending_tou(
+            coordinator,
+            sn,
+            [{**i, "time": _normalize_tou_time(i["time"]).replace(":", "")} for i in items],
+        )
+        await coordinator.async_request_config_refresh()
 
     async def _set_tou_days(call: ServiceCall) -> None:
-        client, sn = _resolve(call.hass, call.data.get("device_sn"))
-        await client.async_set_tou_switch(
+        coordinator, sn = _resolve(call.hass, call.data.get("device_sn"))
+        await coordinator.client.async_set_tou_switch(
             sn, call.data["enabled"], call.data.get("days")
         )
+        coordinator.set_pending(sn, "touAction", "on" if call.data["enabled"] else "off")
+        await coordinator.async_request_config_refresh()
 
     hass.services.async_register(
         DOMAIN, SERVICE_SET_TOU_SCHEDULE, _set_tou_schedule, schema=_SET_TOU_SCHEMA

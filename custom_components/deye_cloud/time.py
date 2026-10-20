@@ -13,7 +13,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from . import DeyeCloudConfigEntry
 from .api import DeyeCloudApiError
 from .entity import async_add_discovered
-from .tou import DeyeTouSlotEntity, tou_slot_indices, tou_slots
+from .tou import DeyeTouSlotEntity, effective_tou_slots, tou_slot_indices
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -78,7 +78,7 @@ class DeyeTouSlotTime(DeyeTouSlotEntity, TimeEntity):
         self._validate_order(value)
         hhmm = value.strftime("%H%M")
         try:
-            await self._commit(hhmm, hhmm)
+            await self._commit(hhmm)
         except DeyeCloudApiError as err:
             raise HomeAssistantError(f"Inverter rejected {self._attr_name}: {err}") from err
 
@@ -89,7 +89,7 @@ class DeyeTouSlotTime(DeyeTouSlotEntity, TimeEntity):
         increasing (e.g. 01:00 < 05:00 < ... < 21:00). Only the immediate
         neighbours need checking; other slots are unaffected by this edit.
         """
-        slots = tou_slots(self._device)
+        slots = effective_tou_slots(self.coordinator, self._device_sn)
         new = value.hour * 60 + value.minute
         prev = _minutes(slots[self._index - 1]["time"]) if self._index > 0 else None
         nxt = (

@@ -76,8 +76,7 @@ class DeyeSolarSellSwitch(DeyeDeviceEntity, SwitchEntity):
         try:
             await self.coordinator.client.async_set_solar_sell(self._device_sn, enabled)
         except DeyeCloudApiError as err:
-            _LOGGER.error("Failed to set solar sell: %s", err)
-            return
+            raise HomeAssistantError(f"Inverter rejected Solar Sell: {err}") from err
         self._attr_is_on = enabled
         self.async_write_ha_state()
         await self.coordinator.async_request_config_refresh()
@@ -102,7 +101,9 @@ class DeyeTouSwitch(DeyeDeviceEntity, SwitchEntity):
 
     @property
     def is_on(self) -> bool | None:
-        action = self._device.get("config", {}).get("touAction")
+        action = self.coordinator.pending_value(
+            self._device_sn, "touAction", self._device.get("config", {}).get("touAction")
+        )
         if action is None:
             return None
         return str(action).lower() == "on"
@@ -121,8 +122,9 @@ class DeyeTouSwitch(DeyeDeviceEntity, SwitchEntity):
         try:
             await self.coordinator.client.async_set_tou_switch(self._device_sn, enabled)
         except DeyeCloudApiError as err:
-            _LOGGER.error("Failed to set TOU switch: %s", err)
-            return
+            raise HomeAssistantError(f"Inverter rejected Time Of Use: {err}") from err
+        self.coordinator.set_pending(self._device_sn, "touAction", "on" if enabled else "off")
+        self.async_write_ha_state()
         await self.coordinator.async_request_config_refresh()
 
 
@@ -144,7 +146,7 @@ class _DeyeTouSlotSwitch(DeyeTouSlotEntity, SwitchEntity):
 
     async def _toggle(self, enabled: bool) -> None:
         try:
-            await self._commit(enabled, enabled)
+            await self._commit(enabled)
         except DeyeCloudApiError as err:
             raise HomeAssistantError(f"Inverter rejected {self._attr_name}: {err}") from err
 

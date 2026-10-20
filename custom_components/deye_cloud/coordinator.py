@@ -6,6 +6,7 @@ Assistant and slows polling down when the API reports a rate limit.
 from __future__ import annotations
 
 import logging
+import time
 from datetime import timedelta
 from typing import Any
 
@@ -19,7 +20,12 @@ from .api import (
     DeyeCloudClient,
     DeyeCloudRateLimitError,
 )
-from .const import DEFAULT_CONFIG_INTERVAL, DEFAULT_SCAN_INTERVAL, DOMAIN
+from .const import (
+    DEFAULT_CONFIG_INTERVAL,
+    DEFAULT_SCAN_INTERVAL,
+    DOMAIN,
+    READBACK_WINDOW,
+)
 from .poller import DeyePoller, next_backoff
 
 _LOGGER = logging.getLogger(__name__)
@@ -45,6 +51,8 @@ class DeyeCloudCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.poller = DeyePoller(client, config_interval=config_interval)
         self._scan_interval = scan_interval
         self._backoff = 0.0
+        # Written values the cloud has not read back yet: (sn, key) -> (value, when).
+        self._pending: dict[tuple[str, str], tuple[Any, float]] = {}
 
     @property
     def station_ids(self) -> list[str]:
@@ -53,6 +61,32 @@ class DeyeCloudCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     @property
     def device_sns(self) -> list[str]:
         return self.poller.device_sns
+
+    def set_pending(self, device_sn: str, key: str, value: Any) -> None:
+        """Remember a written value until the cloud reads it back."""
+        self._pending[(device_sn, key)] = (value, time.monotonic())
+
+    def clear_pending(self, device_sn: str, prefix: str) -> None:
+        for sn, key in list(self._pending):
+            if sn == device_sn and key.startswith(prefix):
+                del self._pending[(sn, key)]
+
+    def pending_value(self, device_sn: str, key: str, actual: Any) -> Any:
+        """Return the pending write for ``key``, or ``actual`` once it no longer applies.
+
+        A pending write is dropped when the read-back matches it, or when config
+        was read again well after the write and still differs (the inverter
+        clamped or rejected it, or it was changed on the unit).
+        """
+        entry = self._pending.get((device_sn, key))
+        if entry is None:
+            return actual
+        value, written = entry
+        read_at = self.poller.config_read_at.get(device_sn, 0.0)
+        if actual == value or read_at - written >= READBACK_WINDOW:
+            del self._pending[(device_sn, key)]
+            return actual
+        return value
 
     async def async_request_config_refresh(self) -> None:
         """Refresh now and re-read inverter config on the next few polls."""

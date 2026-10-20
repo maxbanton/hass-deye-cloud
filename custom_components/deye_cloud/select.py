@@ -55,18 +55,16 @@ class DeyeEnergyPatternSelect(DeyeDeviceEntity, SelectEntity):
         self._attr_unique_id = f"{device_sn}_energy_pattern"
         self.entity_id = f"select.{ID_PREFIX}_energy_pattern"
         self._attr_name = "Energy Pattern"
-        self._optimistic: str | None = None
 
     @property
     def current_option(self) -> str | None:
-        api_value = self._device.get("config", {}).get("energyPattern")
         # Cloud read-back lags a write by minutes; show the requested value until
         # it catches up.
-        if self._optimistic is not None:
-            if api_value == self._optimistic:
-                self._optimistic = None
-            else:
-                return _PATTERN_LABELS.get(self._optimistic)
+        api_value = self.coordinator.pending_value(
+            self._device_sn,
+            "energyPattern",
+            self._device.get("config", {}).get("energyPattern"),
+        )
         return _PATTERN_LABELS.get(api_value)
 
     async def async_select_option(self, option: str) -> None:
@@ -79,6 +77,6 @@ class DeyeEnergyPatternSelect(DeyeDeviceEntity, SelectEntity):
             )
         except DeyeCloudApiError as err:
             raise HomeAssistantError(f"Inverter rejected Energy Pattern: {err}") from err
-        self._optimistic = api_value
+        self.coordinator.set_pending(self._device_sn, "energyPattern", api_value)
         self.async_write_ha_state()
         await self.coordinator.async_request_config_refresh()
