@@ -145,7 +145,7 @@ Device Monitoring* and *Commission Control* permissions, then provide:
 
 | Field | Description |
 |-------|-------------|
-| Region | `Europe, EMEA, Asia-Pacific` or `Americas` |
+| Region | `Europe, EMEA, Asia-Pacific`, `Americas` or `India` |
 | App ID and App Secret | From your Deye developer application |
 | Email and Password | Your Deye Cloud account login |
 

@@ -45,6 +45,7 @@ MAX_BACKOFF_INTERVAL = 1800  # seconds
 
 REGION_EU = "eu"
 REGION_US = "us"
+REGION_INDIA = "india"
 
 REGIONS = {
     REGION_EU: {
@@ -54,5 +55,9 @@ REGIONS = {
     REGION_US: {
         "name": "Americas",
         "base_url": "https://us1-developer.deyecloud.com/v1.0",
+    },
+    REGION_INDIA: {
+        "name": "India",
+        "base_url": "https://india-developer.deyecloud.com/v1.0",
     },
 }

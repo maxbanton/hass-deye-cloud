@@ -1,6 +1,6 @@
 """Tests for the config, options and reauthentication flows."""
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 import voluptuous as vol
@@ -59,6 +59,34 @@ async def test_user_flow_creates_entry(hass: HomeAssistant) -> None:
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["title"] == "Deye Cloud"
     assert result["data"] == USER_INPUT
+
+
+@pytest.mark.parametrize(
+    ("region", "base_url"),
+    [
+        ("eu", "https://eu1-developer.deyecloud.com/v1.0"),
+        ("us", "https://us1-developer.deyecloud.com/v1.0"),
+        ("india", "https://india-developer.deyecloud.com/v1.0"),
+    ],
+)
+async def test_user_flow_uses_region_endpoint(
+    hass: HomeAssistant, region: str, base_url: str
+) -> None:
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    with (
+        patch(
+            "custom_components.deye_cloud.config_flow.DeyeCloudClient"
+        ) as client_cls,
+        patch("custom_components.deye_cloud.async_setup_entry", return_value=True),
+    ):
+        client_cls.return_value.async_test_connection = AsyncMock(return_value=True)
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {**USER_INPUT, CONF_REGION: region}
+        )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert client_cls.call_args.kwargs["base_url"] == base_url
 
 
 async def test_user_flow_reports_bad_credentials(hass: HomeAssistant) -> None:
