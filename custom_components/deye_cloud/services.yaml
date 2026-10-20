@@ -3,7 +3,7 @@ set_tou_schedule:
   description: >-
     Write the inverter Time Of Use schedule (the Work Mode / Time Of Use table).
     Fields match the inverter screen: Time, Power, Batt, Grid Charge, Gen.
-    Provide up to 6 slots in order.
+    Provide all 6 slots in order.
   fields:
     device_sn:
       name: Device serial
@@ -15,11 +15,17 @@ set_tou_schedule:
     slots:
       name: Slots
       description: >-
-        List of up to 6 slots. Each slot: time (HH:MM, 5-minute steps), power (W), batt (%),
-        grid_charge (true/false), gen (true/false); optional sell (true/false).
+        List of exactly 6 slots, in order. Each slot: time (HH:MM, 5-minute steps),
+        power (W), batt (%), grid_charge (true/false), gen (true/false); optional
+        sell (true/false).
       required: true
       example: >-
-        [{"time":"01:00","power":6000,"batt":90,"grid_charge":true,"gen":false}]
+        [{"time":"01:00","power":6000,"batt":90,"grid_charge":true,"gen":false},
+        {"time":"05:00","power":6000,"batt":50,"grid_charge":false,"gen":false},
+        {"time":"09:00","power":6000,"batt":30,"grid_charge":false,"gen":false},
+        {"time":"13:00","power":6000,"batt":30,"grid_charge":false,"gen":false},
+        {"time":"17:00","power":6000,"batt":50,"grid_charge":false,"gen":false},
+        {"time":"21:00","power":6000,"batt":90,"grid_charge":true,"gen":false}]
       selector:
         object:
 

@@ -5,6 +5,7 @@ import time
 from unittest.mock import AsyncMock, patch
 
 import pytest
+import voluptuous as vol
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -167,7 +168,10 @@ async def test_concurrent_edits_on_different_platforms_both_apply(
 
 async def test_failed_action_raises(hass: HomeAssistant, entry, set_tou) -> None:
     set_tou.side_effect = DeyeCloudApiError("offline")
-    slots = [{"time": "01:00", "power": 2000, "batt": 60, "grid_charge": True, "gen": False}]
+    slots = [
+        {"time": f"{h:02d}:00", "power": 2000, "batt": 60, "grid_charge": True, "gen": False}
+        for h in (1, 5, 9, 13, 17, 21)
+    ]
     with pytest.raises(HomeAssistantError, match="Time Of Use schedule"):
         await hass.services.async_call(
             DOMAIN, "set_tou_schedule", {"slots": slots}, blocking=True
@@ -182,5 +186,14 @@ async def test_slot_time_off_a_five_minute_step_is_rejected(
             "time", "set_value",
             {"entity_id": "time.deye_tou2_time", "time": "06:03"},
             blocking=True,
+        )
+    set_tou.assert_not_awaited()
+
+
+async def test_action_needs_all_six_slots(hass: HomeAssistant, entry, set_tou) -> None:
+    slots = [{"time": "01:00", "power": 2000, "batt": 60, "grid_charge": True, "gen": False}]
+    with pytest.raises(vol.Invalid):
+        await hass.services.async_call(
+            DOMAIN, "set_tou_schedule", {"slots": slots}, blocking=True
         )
     set_tou.assert_not_awaited()

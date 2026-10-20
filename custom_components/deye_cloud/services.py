@@ -44,7 +44,8 @@ _SLOT = vol.Schema(
 _SET_TOU_SCHEMA = vol.Schema(
     {
         vol.Optional("device_sn"): cv.string,
-        vol.Required("slots"): vol.All(cv.ensure_list, [_SLOT], vol.Length(min=1, max=6)),
+        # The update endpoint takes the full table, all six slots in order.
+        vol.Required("slots"): vol.All(cv.ensure_list, [_SLOT], vol.Length(min=6, max=6)),
     }
 )
 
