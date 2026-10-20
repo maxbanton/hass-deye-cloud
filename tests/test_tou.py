@@ -172,3 +172,15 @@ async def test_failed_action_raises(hass: HomeAssistant, entry, set_tou) -> None
         await hass.services.async_call(
             DOMAIN, "set_tou_schedule", {"slots": slots}, blocking=True
         )
+
+
+async def test_slot_time_off_a_five_minute_step_is_rejected(
+    hass: HomeAssistant, entry, set_tou
+) -> None:
+    with pytest.raises(HomeAssistantError, match="5-minute"):
+        await hass.services.async_call(
+            "time", "set_value",
+            {"entity_id": "time.deye_tou2_time", "time": "06:03"},
+            blocking=True,
+        )
+    set_tou.assert_not_awaited()

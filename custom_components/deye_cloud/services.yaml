@@ -15,7 +15,7 @@ set_tou_schedule:
     slots:
       name: Slots
       description: >-
-        List of up to 6 slots. Each slot: time (HH:MM), power (W), batt (%),
+        List of up to 6 slots. Each slot: time (HH:MM, 5-minute steps), power (W), batt (%),
         grid_charge (true/false), gen (true/false); optional sell (true/false).
       required: true
       example: >-

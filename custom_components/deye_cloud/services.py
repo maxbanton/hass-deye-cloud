@@ -15,11 +15,23 @@ SERVICE_SET_TOU_DAYS = "set_tou_days"
 
 WEEKDAYS = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"]
 
+def _tou_time(value: object) -> str:
+    """Slot time as given; the update endpoint only takes 5-minute steps."""
+    text = cv.string(value)
+    try:
+        minute = int(_normalize_tou_time(text)[3:])
+    except ValueError as err:
+        raise vol.Invalid(f"invalid time {text!r}, expected HH:MM") from err
+    if minute % 5:
+        raise vol.Invalid(f"time {text!r} must be on a 5-minute step (e.g. 06:05)")
+    return text
+
+
 # Field names mirror the inverter's Time Of Use screen (Time / Power / Batt /
 # Grid Charge / Gen) so they are familiar to anyone who set these on the unit.
 _SLOT = vol.Schema(
     {
-        vol.Required("time"): cv.string,  # "HH:MM"
+        vol.Required("time"): _tou_time,  # "HH:MM"
         vol.Required("power"): vol.Coerce(int),
         vol.Required("batt"): vol.All(vol.Coerce(int), vol.Range(min=0, max=100)),
         vol.Optional("voltage"): vol.Coerce(int),

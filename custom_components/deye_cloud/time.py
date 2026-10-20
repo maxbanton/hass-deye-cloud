@@ -75,6 +75,12 @@ class DeyeTouSlotTime(DeyeTouSlotEntity, TimeEntity):
         return _parse(self._raw())
 
     async def async_set_value(self, value: dt_time) -> None:
+        if value.minute % 5:
+            # The TOU update endpoint only takes times in 5-minute steps.
+            raise HomeAssistantError(
+                f"TOU Slot {self._index + 1} time {value.strftime('%H:%M')} must be "
+                "on a 5-minute step (e.g. 06:00, 06:05)"
+            )
         self._validate_order(value)
         hhmm = value.strftime("%H%M")
         try:
