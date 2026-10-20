@@ -1,12 +1,41 @@
 """Base entities for Deye Cloud."""
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable
 from typing import Any
 
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import callback
+from homeassistant.helpers.entity import Entity
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .coordinator import DeyeCloudCoordinator
+
+
+@callback
+def async_add_discovered(
+    entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+    discover: Callable[[], Iterable[Entity]],
+) -> None:
+    """Add entities as the cloud reports them, now and on every later poll.
+
+    The first poll can be incomplete (a config read failed, a station value was
+    still null), so later polls add whatever shows up after setup.
+    """
+    known: set[str | None] = set()
+
+    @callback
+    def _add() -> None:
+        new = [entity for entity in discover() if entity.unique_id not in known]
+        known.update(entity.unique_id for entity in new)
+        if new:
+            async_add_entities(new)
+
+    _add()
+    entry.async_on_unload(entry.runtime_data.async_add_listener(_add))
 
 
 class DeyeDeviceEntity(CoordinatorEntity[DeyeCloudCoordinator]):

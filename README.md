@@ -72,6 +72,11 @@ outage, use a local option (RS485 with ESP32, or SolarAssistant) instead.
   Sell Power are provided but disabled by default. A `set_tou_schedule` service
   writes the whole table in one call. Commands are asynchronous and confirmed
   against the order status.
+- Entities follow what each inverter actually has. The integration reads the
+  measure points Deye defines for the inverter's product and only the settings
+  the inverter reports, so a string (on-grid) inverter gets no battery or Time Of
+  Use controls, and station fields a plant does not have (battery, grid meter)
+  are left out. Anything that shows up later is added without a restart.
 - Inputs are validated only against universal limits (SOC 0-100, slot times kept
   in ascending order). Per-model limits are left to the inverter, which is the
   authority: values it will not accept are rejected with a visible error rather
@@ -172,6 +177,15 @@ measurement interval, roughly 700.
 
 If the API answers with a rate limit, polling backs off automatically (doubling
 up to 30 minutes) and returns to normal once the limit clears.
+
+## Reporting a problem
+
+Open an [issue](https://github.com/maxbanton/hass-deye-cloud/issues/new/choose)
+and attach the diagnostics file: **Settings > Devices & Services > Deye Cloud**,
+three-dot menu on the entry, **Download diagnostics**. It holds what the cloud
+returns for your inverter (model, measure points, settings) with your
+credentials, serial numbers and location removed, which is usually what it takes
+to support a model the author does not own.
 
 ## Removing the integration
 

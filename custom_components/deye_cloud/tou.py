@@ -25,6 +25,11 @@ def tou_slots(device: dict[str, Any]) -> list[dict[str, Any]]:
     return device.get("config", {}).get("timeUseSettingItems") or []
 
 
+def tou_slot_indices(device: dict[str, Any]) -> range:
+    """Indices of the slots the inverter reported."""
+    return range(min(len(tou_slots(device)), TOU_SLOT_COUNT))
+
+
 async def async_write_tou_slot(
     coordinator: DeyeCloudCoordinator,
     device_sn: str,

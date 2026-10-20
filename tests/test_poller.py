@@ -21,6 +21,8 @@ class FakeClient:
         self.fail_inventory = False
         self.rate_limit_latest = False
         self.fail_latest = False
+        self.fail_points = False
+        self.points = ["SOC", "Power"]
 
     def _count(self, name: str) -> None:
         self.calls[name] = self.calls.get(name, 0) + 1
@@ -49,6 +51,12 @@ class FakeClient:
             raise DeyeCloudApiError("Connection error: 500")
         return {sn: {"data": {"Power": 1}, "units": {"Power": "W"}} for sn in device_sns}
 
+    async def async_get_measure_points(self, device_sn, device_type):
+        self._count("measure_points")
+        if self.fail_points:
+            raise DeyeCloudApiError("boom")
+        return self.points
+
     async def async_get_system_config(self, device_sn):
         self._count("config")
         return {"energyPattern": "LOAD_FIRST"}
@@ -74,9 +82,11 @@ async def test_first_poll_reads_every_tier(poller):
         "inventory": 1,
         "station_latest": 1,
         "device_latest": 1,
+        "measure_points": 1,
         "config": 3,
     }
     assert data["devices"]["SN1"]["config"]["maxChargeCurrent"] == 40
+    assert data["devices"]["SN1"]["measure_points"] == ["SOC", "Power"]
     assert poller.device_sns == ["SN1"]
 
 
@@ -88,6 +98,33 @@ async def test_second_poll_skips_inventory_and_config(poller):
     assert calls["config"] == 3             # slow tier
     assert calls["station_latest"] == 2     # fast tier
     assert calls["device_latest"] == 2      # fast tier
+
+
+async def test_measure_points_are_read_once(poller):
+    await poller.async_poll()
+    poller._stations_read -= INVENTORY_INTERVAL
+    await poller.async_poll()
+    assert poller.client.calls["measure_points"] == 1
+
+
+async def test_failed_measure_points_retry_on_the_next_inventory_refresh(poller):
+    poller.client.fail_points = True
+    data = await poller.async_poll()
+    assert data["devices"]["SN1"]["measure_points"] is None
+    await poller.async_poll()
+    assert poller.client.calls["measure_points"] == 1
+    poller.client.fail_points = False
+    poller._stations_read -= INVENTORY_INTERVAL
+    data = await poller.async_poll()
+    assert poller.client.calls["measure_points"] == 2
+    assert data["devices"]["SN1"]["measure_points"] == ["SOC", "Power"]
+
+
+async def test_inverter_without_battery_skips_battery_and_tou_config(poller):
+    poller.client.points = ["Power", "DailyActiveProduction"]
+    data = await poller.async_poll()
+    assert poller.client.calls["config"] == 1
+    assert "maxChargeCurrent" not in data["devices"]["SN1"]["config"]
 
 
 async def test_cached_config_still_served_when_tier_is_skipped(poller):

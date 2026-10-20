@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
 from typing import Any
 
 from homeassistant.components.switch import SwitchEntity
@@ -14,8 +15,9 @@ from . import DeyeCloudConfigEntry
 from .api import DeyeCloudApiError
 from .const import ID_PREFIX
 from .coordinator import DeyeCloudCoordinator
-from .entity import DeyeDeviceEntity
-from .tou import TOU_SLOT_COUNT, DeyeTouSlotEntity
+from .discovery import config_has
+from .entity import DeyeDeviceEntity, async_add_discovered
+from .tou import DeyeTouSlotEntity, tou_slot_indices
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -29,14 +31,20 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     coordinator = entry.runtime_data
-    entities: list[SwitchEntity] = []
-    for sn in coordinator.device_sns:
-        entities.append(DeyeSolarSellSwitch(coordinator, sn))
-        entities.append(DeyeTouSwitch(coordinator, sn))
-        for i in range(TOU_SLOT_COUNT):
-            entities.append(DeyeTouSlotGridCharge(coordinator, sn, i))
-            entities.append(DeyeTouSlotGen(coordinator, sn, i))
-    async_add_entities(entities)
+
+    def discover() -> Iterator[SwitchEntity]:
+        for sn in coordinator.device_sns:
+            device = coordinator.data["devices"][sn]
+            # Solar sell has no read-back; inverters with a system work mode have it.
+            if config_has(device, "systemWorkMode"):
+                yield DeyeSolarSellSwitch(coordinator, sn)
+            if config_has(device, "touAction"):
+                yield DeyeTouSwitch(coordinator, sn)
+            for i in tou_slot_indices(device):
+                yield DeyeTouSlotGridCharge(coordinator, sn, i)
+                yield DeyeTouSlotGen(coordinator, sn, i)
+
+    async_add_discovered(entry, async_add_entities, discover)
 
 
 class DeyeSolarSellSwitch(DeyeDeviceEntity, SwitchEntity):

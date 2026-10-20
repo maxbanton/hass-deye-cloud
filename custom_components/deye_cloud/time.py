@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
 from datetime import time as dt_time
 
 from homeassistant.components.time import TimeEntity
@@ -11,7 +12,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import DeyeCloudConfigEntry
 from .api import DeyeCloudApiError
-from .tou import TOU_SLOT_COUNT, DeyeTouSlotEntity, tou_slots
+from .entity import async_add_discovered
+from .tou import DeyeTouSlotEntity, tou_slot_indices, tou_slots
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -25,11 +27,13 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     coordinator = entry.runtime_data
-    entities: list[TimeEntity] = []
-    for sn in coordinator.device_sns:
-        for i in range(TOU_SLOT_COUNT):
-            entities.append(DeyeTouSlotTime(coordinator, sn, i))
-    async_add_entities(entities)
+
+    def discover() -> Iterator[TimeEntity]:
+        for sn in coordinator.device_sns:
+            for i in tou_slot_indices(coordinator.data["devices"][sn]):
+                yield DeyeTouSlotTime(coordinator, sn, i)
+
+    async_add_discovered(entry, async_add_entities, discover)
 
 
 def _parse(raw: object) -> dt_time | None:

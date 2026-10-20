@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
 
 from homeassistant.components.select import SelectEntity
 from homeassistant.core import HomeAssistant
@@ -12,7 +13,8 @@ from . import DeyeCloudConfigEntry
 from .api import DeyeCloudApiError
 from .const import ID_PREFIX
 from .coordinator import DeyeCloudCoordinator
-from .entity import DeyeDeviceEntity
+from .discovery import config_has, has_battery
+from .entity import DeyeDeviceEntity, async_add_discovered
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -26,9 +28,15 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     coordinator = entry.runtime_data
-    async_add_entities(
-        DeyeEnergyPatternSelect(coordinator, sn) for sn in coordinator.device_sns
-    )
+
+    def discover() -> Iterator[SelectEntity]:
+        for sn in coordinator.device_sns:
+            device = coordinator.data["devices"][sn]
+            # Battery First means nothing without a battery, even on a hybrid.
+            if has_battery(device) and config_has(device, "energyPattern"):
+                yield DeyeEnergyPatternSelect(coordinator, sn)
+
+    async_add_discovered(entry, async_add_entities, discover)
 
 
 # Human-readable labels shown in HA, mapped to the API's raw enum values.

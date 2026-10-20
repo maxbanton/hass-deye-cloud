@@ -16,6 +16,7 @@ API_TIMEOUT = 30
 
 # Response codes the API uses to signal success.
 _SUCCESS_CODES = {0, 1000000, 1106000, "0", "1000000", "1106000"}
+_ENVELOPE_KEYS = {"code", "msg", "success", "requestId"}
 _AUTH_ERROR_CODES = {1001, 1002, 1003, 2101017, "1001", "1002", "1003", "2101017"}
 
 # Deye has announced usage quotas and rate limits but not yet published the
@@ -224,9 +225,22 @@ class DeyeCloudClient:
         return result.get("stationList", [])
 
     async def async_get_station_latest(self, station_id: str) -> dict[str, Any]:
-        return await self._request(
+        result = await self._request(
             "POST", "/station/latest", data={"stationId": station_id}
         )
+        # The values sit next to the response envelope rather than under "data".
+        return {k: v for k, v in result.items() if k not in _ENVELOPE_KEYS}
+
+    async def async_get_measure_points(
+        self, device_sn: str, device_type: str
+    ) -> list[str]:
+        """Return every measure point Deye defines for this device's product."""
+        result = await self._request(
+            "POST",
+            "/device/measurePoints",
+            data={"deviceSn": device_sn, "deviceType": device_type},
+        )
+        return list(result.get("measurePoints") or [])
 
     async def async_get_device_latest(
         self, device_sns: list[str]

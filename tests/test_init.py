@@ -55,6 +55,9 @@ def patched_client(**overrides):
                 }
             }
         ),
+        "async_get_measure_points": AsyncMock(
+            return_value=["SOC", "InverterOutputFrequency"]
+        ),
         "async_get_system_config": AsyncMock(return_value={"energyPattern": "LOAD_FIRST"}),
         "async_get_battery_config": AsyncMock(return_value={"maxChargeCurrent": 40}),
         "async_get_tou": AsyncMock(

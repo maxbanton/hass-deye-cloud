@@ -1,6 +1,7 @@
 """Sensor platform for Deye Cloud (dynamic measure-point discovery)."""
 from __future__ import annotations
 
+from collections.abc import Iterator
 from typing import Any
 
 from homeassistant.components.sensor import SensorEntity
@@ -11,7 +12,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from . import DeyeCloudConfigEntry
 from .const import ID_PREFIX
 from .coordinator import DeyeCloudCoordinator
-from .entity import DeyeDeviceEntity, DeyeStationEntity
+from .entity import DeyeDeviceEntity, DeyeStationEntity, async_add_discovered
 from .naming import (
     DEVICE_SENSOR_NAMES,
     STATION_SENSOR_NAMES,
@@ -33,18 +34,25 @@ async def async_setup_entry(
     entry: DeyeCloudConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Create a sensor for every measure point discovered in the first poll."""
+    """Create a sensor for every measure point the cloud reports a value for.
+
+    The station endpoint returns every field for every station and leaves the
+    ones a plant does not have (battery, grid meter) null, so null is skipped.
+    """
     coordinator = entry.runtime_data
 
-    entities: list[SensorEntity] = []
-    for sn in coordinator.device_sns:
-        for key in coordinator.data["devices"][sn]["data"]:
-            entities.append(DeyeDeviceSensor(coordinator, sn, key))
-    for station_id in coordinator.station_ids:
-        for key in coordinator.data["stations"][station_id].get("data", {}):
-            entities.append(DeyeStationSensor(coordinator, station_id, key))
+    def discover() -> Iterator[SensorEntity]:
+        for sn in coordinator.device_sns:
+            for key, value in coordinator.data["devices"][sn]["data"].items():
+                if value is not None:
+                    yield DeyeDeviceSensor(coordinator, sn, key)
+        for station_id in coordinator.station_ids:
+            station = coordinator.data["stations"][station_id]
+            for key, value in station.get("data", {}).items():
+                if value is not None:
+                    yield DeyeStationSensor(coordinator, station_id, key)
 
-    async_add_entities(entities)
+    async_add_discovered(entry, async_add_entities, discover)
 
 
 def _coerce(value: Any) -> float | str | None:

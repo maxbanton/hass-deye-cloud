@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
 
 from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.const import (
@@ -19,8 +20,9 @@ from . import DeyeCloudConfigEntry
 from .api import DeyeCloudApiError
 from .const import ID_PREFIX
 from .coordinator import DeyeCloudCoordinator
-from .entity import DeyeDeviceEntity
-from .tou import TOU_SLOT_COUNT, DeyeTouSlotEntity
+from .discovery import config_has
+from .entity import DeyeDeviceEntity, async_add_discovered
+from .tou import DeyeTouSlotEntity, tou_slot_indices
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -34,17 +36,24 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     coordinator = entry.runtime_data
-    entities: list[NumberEntity] = []
-    for sn in coordinator.device_sns:
-        entities.append(DeyeMaxChargeCurrent(coordinator, sn))
-        entities.append(DeyeMaxDischargeCurrent(coordinator, sn))
-        entities.append(DeyeMaxSellPower(coordinator, sn))
-        entities.append(DeyeLowBatterySoc(coordinator, sn))
-        for i in range(TOU_SLOT_COUNT):
-            entities.append(DeyeTouSlotSoc(coordinator, sn, i))
-            entities.append(DeyeTouSlotPower(coordinator, sn, i))
-            entities.append(DeyeTouSlotVoltage(coordinator, sn, i))
-    async_add_entities(entities)
+
+    def discover() -> Iterator[NumberEntity]:
+        for sn in coordinator.device_sns:
+            device = coordinator.data["devices"][sn]
+            for cls in (
+                DeyeMaxChargeCurrent,
+                DeyeMaxDischargeCurrent,
+                DeyeMaxSellPower,
+                DeyeLowBatterySoc,
+            ):
+                if config_has(device, cls._config_key):
+                    yield cls(coordinator, sn)
+            for i in tou_slot_indices(device):
+                yield DeyeTouSlotSoc(coordinator, sn, i)
+                yield DeyeTouSlotPower(coordinator, sn, i)
+                yield DeyeTouSlotVoltage(coordinator, sn, i)
+
+    async_add_discovered(entry, async_add_entities, discover)
 
 
 class _DeyeNumber(DeyeDeviceEntity, NumberEntity):

@@ -7,8 +7,11 @@ each kind of data only as often as it can actually change:
   fails, the last good values are served for up to ``STALE_DATA_TIMEOUT``
 * station measurements -- every poll (station-level aggregate)
 * station/device list  -- hourly (inventory, only needed for discovery)
+* inverter measure points -- once per inverter (what its product can report);
+  a failed read is retried on the next inventory refresh
 * inverter config      -- every ``config_interval`` minutes, plus a short burst
-  of re-reads after this integration writes a setting
+  of re-reads after this integration writes a setting; battery and TOU config
+  only for inverters that have a battery
 
 Cached values are reused between reads, so entity state never goes stale-empty
 just because a tier was skipped.
@@ -27,6 +30,7 @@ from .const import (
     MAX_BACKOFF_INTERVAL,
     STALE_DATA_TIMEOUT,
 )
+from .discovery import has_battery, is_inverter
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -64,6 +68,8 @@ class DeyePoller:
         self._stations: list[dict[str, Any]] = []
         self._stations_read = 0.0
         self._configs: dict[str, dict[str, Any]] = {}
+        self._points: dict[str, list[str]] = {}
+        self._points_tried: set[str] = set()
         self._latest: dict[str, tuple[float, dict[str, Any]]] = {}
         self._configs_read = 0.0
         self._config_catchup = 0
@@ -122,9 +128,14 @@ class DeyePoller:
                     data["devices"][sn]["data"] = payload.get("data", {})
                     data["devices"][sn]["units"] = payload.get("units", {})
 
+        await self._async_measure_points(data["devices"])
+        for sn, entry in data["devices"].items():
+            entry["measure_points"] = self._points.get(sn)
+
         online = [sn for sn, entry in data["devices"].items() if entry["data"]]
-        if online and self._config_due(now):
-            await self._async_configs(online, now)
+        inverters = [sn for sn in online if is_inverter(data["devices"][sn])]
+        if inverters and self._config_due(now):
+            await self._async_configs(inverters, data["devices"], now)
         for sn, entry in data["devices"].items():
             entry["config"] = self._configs.get(sn, {})
 
@@ -153,7 +164,23 @@ class DeyePoller:
             _LOGGER.debug("Inventory refresh failed; reusing cached station list")
             return self._stations
         self._stations_read = now
+        self._points_tried.clear()
         return self._stations
+
+    async def _async_measure_points(self, devices: dict[str, dict[str, Any]]) -> None:
+        """Read the product measure points of inverters not seen yet."""
+        for sn, entry in devices.items():
+            if sn in self._points or sn in self._points_tried or not is_inverter(entry):
+                continue
+            self._points_tried.add(sn)
+            try:
+                self._points[sn] = await self.client.async_get_measure_points(
+                    sn, entry["info"]["deviceType"]
+                )
+            except DeyeCloudRateLimitError:
+                raise
+            except DeyeCloudApiError as err:
+                _LOGGER.debug("Measure points read failed for %s: %s", sn, err)
 
     def _config_due(self, now: float) -> bool:
         return (
@@ -162,15 +189,16 @@ class DeyePoller:
             or now - self._configs_read >= self.config_interval
         )
 
-    async def _async_configs(self, device_sns: list[str], now: float) -> None:
-        """Read system/battery/TOU config for the given devices (best effort)."""
+    async def _async_configs(
+        self, device_sns: list[str], devices: dict[str, dict[str, Any]], now: float
+    ) -> None:
+        """Read system (and battery/TOU) config for the given inverters."""
         for sn in device_sns:
             config: dict[str, Any] = {}
-            for fetch in (
-                self.client.async_get_system_config,
-                self.client.async_get_battery_config,
-                self.client.async_get_tou,
-            ):
+            fetches = [self.client.async_get_system_config]
+            if has_battery(devices[sn]):
+                fetches += [self.client.async_get_battery_config, self.client.async_get_tou]
+            for fetch in fetches:
                 try:
                     config.update(await fetch(sn))
                 except DeyeCloudRateLimitError:
