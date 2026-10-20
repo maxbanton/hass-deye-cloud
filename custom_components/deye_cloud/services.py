@@ -95,7 +95,7 @@ def async_register_services(hass: HomeAssistant) -> None:
         return
 
     async def _set_tou_schedule(call: ServiceCall) -> None:
-        coordinator, sn = _resolve(call.hass, call.data.get("device_sn"))
+        coordinator, sn = _resolve(hass, call.data.get("device_sn"))
         items = _to_items(call.data["slots"])
         await coordinator.client.async_set_tou(sn, items)
         # /config/tou reads times back as HHMM.
@@ -107,7 +107,7 @@ def async_register_services(hass: HomeAssistant) -> None:
         await coordinator.async_request_config_refresh()
 
     async def _set_tou_days(call: ServiceCall) -> None:
-        coordinator, sn = _resolve(call.hass, call.data.get("device_sn"))
+        coordinator, sn = _resolve(hass, call.data.get("device_sn"))
         await coordinator.client.async_set_tou_switch(
             sn, call.data["enabled"], call.data.get("days")
         )
