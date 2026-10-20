@@ -1,5 +1,6 @@
 """Time Of Use writes, pending values and command errors."""
 
+import asyncio
 import time
 from unittest.mock import AsyncMock, patch
 
@@ -131,3 +132,43 @@ async def test_failed_switch_command_raises(hass: HomeAssistant, entry) -> None:
             blocking=True,
         )
     assert hass.states.get("switch.deye_maintain_battery_level").state == "on"
+
+
+async def test_one_call_for_every_slot_sets_them_all(hass: HomeAssistant, entry, set_tou) -> None:
+    await hass.services.async_call(
+        "number", "set_value",
+        {"entity_id": [f"number.deye_tou{n}_soc" for n in range(1, 7)], "value": 25},
+        blocking=True,
+    )
+
+    assert [s["soc"] for s in set_tou.await_args_list[-1].args[1]] == [25] * 6
+
+
+async def test_concurrent_edits_on_different_platforms_both_apply(
+    hass: HomeAssistant, entry, set_tou
+) -> None:
+    async def slow_write(*args):
+        await asyncio.sleep(0.01)
+
+    set_tou.side_effect = slow_write
+    await asyncio.gather(
+        _set_soc(hass, 1, 70),
+        hass.services.async_call(
+            "time", "set_value",
+            {"entity_id": "time.deye_tou2_time", "time": "06:00"},
+            blocking=True,
+        ),
+    )
+
+    sent = set_tou.await_args_list[-1].args[1]
+    assert sent[0]["soc"] == 70
+    assert sent[1]["time"] == "0600"
+
+
+async def test_failed_action_raises(hass: HomeAssistant, entry, set_tou) -> None:
+    set_tou.side_effect = DeyeCloudApiError("offline")
+    slots = [{"time": "01:00", "power": 2000, "batt": 60, "grid_charge": True, "gen": False}]
+    with pytest.raises(HomeAssistantError, match="Time Of Use schedule"):
+        await hass.services.async_call(
+            DOMAIN, "set_tou_schedule", {"slots": slots}, blocking=True
+        )

@@ -3,10 +3,10 @@ from __future__ import annotations
 
 import voluptuous as vol
 from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.exceptions import ServiceValidationError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 
-from .api import _normalize_tou_time
+from .api import DeyeCloudApiError, _normalize_tou_time
 from .const import DOMAIN
 from .tou import set_pending_tou
 
@@ -97,20 +97,29 @@ def async_register_services(hass: HomeAssistant) -> None:
     async def _set_tou_schedule(call: ServiceCall) -> None:
         coordinator, sn = _resolve(hass, call.data.get("device_sn"))
         items = _to_items(call.data["slots"])
-        await coordinator.client.async_set_tou(sn, items)
-        # /config/tou reads times back as HHMM.
-        set_pending_tou(
-            coordinator,
-            sn,
-            [{**i, "time": _normalize_tou_time(i["time"]).replace(":", "")} for i in items],
-        )
+        async with coordinator.tou_lock:
+            try:
+                await coordinator.client.async_set_tou(sn, items)
+            except DeyeCloudApiError as err:
+                raise HomeAssistantError(
+                    f"Inverter rejected the Time Of Use schedule: {err}"
+                ) from err
+            # /config/tou reads times back as HHMM.
+            set_pending_tou(
+                coordinator,
+                sn,
+                [{**i, "time": _normalize_tou_time(i["time"]).replace(":", "")} for i in items],
+            )
         await coordinator.async_request_config_refresh()
 
     async def _set_tou_days(call: ServiceCall) -> None:
         coordinator, sn = _resolve(hass, call.data.get("device_sn"))
-        await coordinator.client.async_set_tou_switch(
-            sn, call.data["enabled"], call.data.get("days")
-        )
+        try:
+            await coordinator.client.async_set_tou_switch(
+                sn, call.data["enabled"], call.data.get("days")
+            )
+        except DeyeCloudApiError as err:
+            raise HomeAssistantError(f"Inverter rejected Time Of Use days: {err}") from err
         coordinator.set_pending(sn, "touAction", "on" if call.data["enabled"] else "off")
         await coordinator.async_request_config_refresh()
 

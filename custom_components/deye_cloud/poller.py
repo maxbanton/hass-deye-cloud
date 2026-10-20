@@ -28,6 +28,7 @@ from .const import (
     DEFAULT_CONFIG_INTERVAL,
     INVENTORY_INTERVAL,
     MAX_BACKOFF_INTERVAL,
+    READBACK_WINDOW,
     STALE_DATA_TIMEOUT,
 )
 from .discovery import has_battery, is_inverter
@@ -73,6 +74,7 @@ class DeyePoller:
         self._latest: dict[str, tuple[float, dict[str, Any]]] = {}
         self._configs_read = 0.0
         self._config_catchup = 0
+        self._readback_due = 0.0
         self.config_read_at: dict[str, float] = {}
 
     def request_config_catchup(self) -> None:
@@ -80,9 +82,12 @@ class DeyePoller:
 
         Called after this integration writes a setting: the cloud needs a minute
         or two before a write reads back, so a short burst of config reads lets
-        entities converge without polling config on every cycle.
+        entities converge without polling config on every cycle. One more read
+        is due once READBACK_WINDOW has passed, so a value the inverter clamped
+        or rejected is seen even when a short scan interval ended the burst early.
         """
         self._config_catchup = CONFIG_CATCHUP_POLLS
+        self._readback_due = time.monotonic() + READBACK_WINDOW
 
     async def async_poll(self) -> dict[str, Any]:
         """Run one poll and return the full data tree."""
@@ -186,6 +191,7 @@ class DeyePoller:
     def _config_due(self, now: float) -> bool:
         return (
             self._config_catchup > 0
+            or 0 < self._readback_due <= now
             or not self._configs
             or now - self._configs_read >= self.config_interval
         )
@@ -212,3 +218,5 @@ class DeyePoller:
         self._configs_read = now
         if self._config_catchup:
             self._config_catchup -= 1
+        if 0 < self._readback_due <= now:
+            self._readback_due = 0.0

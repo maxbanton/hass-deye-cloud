@@ -115,12 +115,12 @@ more solar headroom in summer:
 service: number.set_value
 target:
   entity_id:
-    - number.deye_tou1_batt
-    - number.deye_tou2_batt
-    - number.deye_tou3_batt
-    - number.deye_tou4_batt
-    - number.deye_tou5_batt
-    - number.deye_tou6_batt
+    - number.deye_tou1_soc
+    - number.deye_tou2_soc
+    - number.deye_tou3_soc
+    - number.deye_tou4_soc
+    - number.deye_tou5_soc
+    - number.deye_tou6_soc
 data:
   value: 30
 ```

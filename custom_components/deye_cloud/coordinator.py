@@ -5,6 +5,7 @@ Assistant and slows polling down when the API reports a rate limit.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from datetime import timedelta
@@ -53,6 +54,9 @@ class DeyeCloudCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._backoff = 0.0
         # Written values the cloud has not read back yet: (sn, key) -> (value, when).
         self._pending: dict[tuple[str, str], tuple[Any, float]] = {}
+        # TOU writes send the whole table, so building and sending one must not
+        # interleave with another (number, switch and time each queue their own).
+        self.tou_lock = asyncio.Lock()
 
     @property
     def station_ids(self) -> list[str]:

@@ -74,13 +74,14 @@ async def async_write_tou_slot(
     changes: dict[str, Any],
 ) -> None:
     """Apply ``changes`` to one slot and write the full six-slot table back."""
-    slots = effective_tou_slots(coordinator, device_sn)
-    if index >= len(slots):
-        raise ValueError(f"TOU slot {index + 1} is not available yet")
-    slots[index] = {**slots[index], **changes}
-    await coordinator.client.async_set_tou(device_sn, slots)
-    for field, value in changes.items():
-        coordinator.set_pending(device_sn, tou_pending_key(index, field), value)
+    async with coordinator.tou_lock:
+        slots = effective_tou_slots(coordinator, device_sn)
+        if index >= len(slots):
+            raise ValueError(f"TOU slot {index + 1} is not available yet")
+        slots[index] = {**slots[index], **changes}
+        await coordinator.client.async_set_tou(device_sn, slots)
+        for field, value in changes.items():
+            coordinator.set_pending(device_sn, tou_pending_key(index, field), value)
     await coordinator.async_request_config_refresh()
 
 
