@@ -189,7 +189,7 @@ class _DeyeTouSlotNumber(DeyeTouSlotEntity, NumberEntity):
 
     async def async_set_native_value(self, value: float) -> None:
         try:
-            await self._commit(int(value), int(value))
+            await self._commit(int(value))
         except (DeyeCloudApiError, ValueError) as err:
             raise HomeAssistantError(
                 f"Inverter rejected {self._attr_name} = {int(value)}: {err}"

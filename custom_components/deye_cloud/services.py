@@ -3,21 +3,35 @@ from __future__ import annotations
 
 import voluptuous as vol
 from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.exceptions import ServiceValidationError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 
+from .api import DeyeCloudApiError, _normalize_tou_time
 from .const import DOMAIN
+from .tou import set_pending_tou
 
 SERVICE_SET_TOU_SCHEDULE = "set_tou_schedule"
 SERVICE_SET_TOU_DAYS = "set_tou_days"
 
 WEEKDAYS = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"]
 
+def _tou_time(value: object) -> str:
+    """Slot time as given; the update endpoint only takes 5-minute steps."""
+    text = cv.string(value)
+    try:
+        minute = int(_normalize_tou_time(text)[3:])
+    except ValueError as err:
+        raise vol.Invalid(f"invalid time {text!r}, expected HH:MM") from err
+    if minute % 5:
+        raise vol.Invalid(f"time {text!r} must be on a 5-minute step (e.g. 06:05)")
+    return text
+
+
 # Field names mirror the inverter's Time Of Use screen (Time / Power / Batt /
 # Grid Charge / Gen) so they are familiar to anyone who set these on the unit.
 _SLOT = vol.Schema(
     {
-        vol.Required("time"): cv.string,  # "HH:MM"
+        vol.Required("time"): _tou_time,  # "HH:MM"
         vol.Required("power"): vol.Coerce(int),
         vol.Required("batt"): vol.All(vol.Coerce(int), vol.Range(min=0, max=100)),
         vol.Optional("voltage"): vol.Coerce(int),
@@ -30,7 +44,8 @@ _SLOT = vol.Schema(
 _SET_TOU_SCHEMA = vol.Schema(
     {
         vol.Optional("device_sn"): cv.string,
-        vol.Required("slots"): vol.All(cv.ensure_list, [_SLOT], vol.Length(min=1, max=6)),
+        # The update endpoint takes the full table, all six slots in order.
+        vol.Required("slots"): vol.All(cv.ensure_list, [_SLOT], vol.Length(min=6, max=6)),
     }
 )
 
@@ -44,16 +59,16 @@ _SET_TOU_DAYS_SCHEMA = vol.Schema(
 
 
 def _resolve(hass: HomeAssistant, device_sn: str | None):
-    """Return (client, device_sn); pick the only device if none given."""
+    """Return (coordinator, device_sn); pick the only device if none given."""
     devices = []
     for entry in hass.config_entries.async_loaded_entries(DOMAIN):
         coordinator = entry.runtime_data
         for sn in coordinator.device_sns:
-            devices.append((coordinator.client, sn))
+            devices.append((coordinator, sn))
     if device_sn:
-        for client, sn in devices:
+        for coordinator, sn in devices:
             if sn == device_sn:
-                return client, sn
+                return coordinator, sn
         raise ServiceValidationError(
             translation_domain=DOMAIN,
             translation_key="unknown_device",
@@ -93,14 +108,33 @@ def async_register_services(hass: HomeAssistant) -> None:
         return
 
     async def _set_tou_schedule(call: ServiceCall) -> None:
-        client, sn = _resolve(call.hass, call.data.get("device_sn"))
-        await client.async_set_tou(sn, _to_items(call.data["slots"]))
+        coordinator, sn = _resolve(hass, call.data.get("device_sn"))
+        items = _to_items(call.data["slots"])
+        async with coordinator.tou_lock:
+            try:
+                await coordinator.client.async_set_tou(sn, items)
+            except DeyeCloudApiError as err:
+                raise HomeAssistantError(
+                    f"Inverter rejected the Time Of Use schedule: {err}"
+                ) from err
+            # /config/tou reads times back as HHMM.
+            set_pending_tou(
+                coordinator,
+                sn,
+                [{**i, "time": _normalize_tou_time(i["time"]).replace(":", "")} for i in items],
+            )
+        await coordinator.async_request_config_refresh()
 
     async def _set_tou_days(call: ServiceCall) -> None:
-        client, sn = _resolve(call.hass, call.data.get("device_sn"))
-        await client.async_set_tou_switch(
-            sn, call.data["enabled"], call.data.get("days")
-        )
+        coordinator, sn = _resolve(hass, call.data.get("device_sn"))
+        try:
+            await coordinator.client.async_set_tou_switch(
+                sn, call.data["enabled"], call.data.get("days")
+            )
+        except DeyeCloudApiError as err:
+            raise HomeAssistantError(f"Inverter rejected Time Of Use days: {err}") from err
+        coordinator.set_pending(sn, "touAction", "on" if call.data["enabled"] else "off")
+        await coordinator.async_request_config_refresh()
 
     hass.services.async_register(
         DOMAIN, SERVICE_SET_TOU_SCHEDULE, _set_tou_schedule, schema=_SET_TOU_SCHEMA

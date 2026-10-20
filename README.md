@@ -97,7 +97,10 @@ This integration exposes the table directly as entities, so you set each value
 the way you set anything else in Home Assistant:
 
 - **Time Of Use** (switch) turns the schedule on or off. It must be on for the
-  slots to apply.
+  slots to apply. Turning it on activates every day of the week: the cloud
+  does not report which days were active, so they cannot be kept. To run the
+  schedule on some days only, use the **`deye_cloud.set_tou_days`** service
+  instead of the switch.
 - **TOU Slot N SOC** (number, N = 1-6) is the battery level to hold in that slot.
 - **TOU Slot N Time Start** (time, N = 1-6) is when the slot begins. Each slot's
   end is the next slot's start, and times are kept in ascending order.
@@ -115,18 +118,19 @@ more solar headroom in summer:
 service: number.set_value
 target:
   entity_id:
-    - number.deye_tou1_batt
-    - number.deye_tou2_batt
-    - number.deye_tou3_batt
-    - number.deye_tou4_batt
-    - number.deye_tou5_batt
-    - number.deye_tou6_batt
+    - number.deye_tou1_soc
+    - number.deye_tou2_soc
+    - number.deye_tou3_soc
+    - number.deye_tou4_soc
+    - number.deye_tou5_soc
+    - number.deye_tou6_soc
 data:
   value: 30
 ```
 
 To write several slots at once (times, powers, flags included), use the
-**`deye_cloud.set_tou_schedule`** service. Or configure Time Of Use on the
+**`deye_cloud.set_tou_schedule`** service. It takes all six slots in order, as
+the inverter stores them. Or configure Time Of Use on the
 **inverter's own screen** and simply turn the **Time Of Use** switch off here, so
 the integration never changes your schedule.
 

@@ -9,7 +9,11 @@ from custom_components.deye_cloud.api import (
     _is_rate_limit,
     _retry_after,
 )
-from custom_components.deye_cloud.const import INVENTORY_INTERVAL, STALE_DATA_TIMEOUT
+from custom_components.deye_cloud.const import (
+    INVENTORY_INTERVAL,
+    READBACK_WINDOW,
+    STALE_DATA_TIMEOUT,
+)
 from custom_components.deye_cloud.poller import DeyePoller, next_backoff
 
 
@@ -155,6 +159,18 @@ async def test_write_triggers_config_catchup(poller):
     assert poller.client.calls["config"] == 12  # 3 extra reads of 3 calls
     await poller.async_poll()
     assert poller.client.calls["config"] == 12  # burst over, back to slow tier
+
+
+async def test_config_is_read_again_after_the_readback_window(poller):
+    await poller.async_poll()
+    poller.request_config_catchup()
+    for _ in range(6):
+        await poller.async_poll()
+    assert poller.client.calls["config"] == 18  # 5 catch-up reads, then quiet
+    poller._readback_due -= READBACK_WINDOW
+    await poller.async_poll()
+    await poller.async_poll()
+    assert poller.client.calls["config"] == 21  # one read after the window
 
 
 async def test_cached_inventory_survives_a_failed_refresh(poller):
