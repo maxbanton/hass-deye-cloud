@@ -43,7 +43,6 @@ STALE_DATA_TIMEOUT = 900  # seconds
 # Upper bound for the rate-limit backoff.
 MAX_BACKOFF_INTERVAL = 1800  # seconds
 
-
 REGION_EU = "eu"
 REGION_US = "us"
 REGION_INDIA = "india"
@@ -62,7 +61,3 @@ REGIONS = {
         "base_url": "https://india-developer.deyecloud.com/v1.0",
     },
 }
-
-    
-}
-
