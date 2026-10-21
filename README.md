@@ -139,7 +139,7 @@ the integration never changes your schedule.
 
 [![Open your Home Assistant instance and open this repository in HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=maxbanton&repository=hass-deye-cloud&category=integration)
 
-Or manually:
+Or search in HACS:
 
 1. In HACS, search for **Deye Cloud**.
 2. Install it and restart Home Assistant.
