@@ -6,15 +6,15 @@ from collections.abc import Iterator
 
 from homeassistant.components.select import SelectEntity
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import DeyeCloudConfigEntry
 from .api import DeyeCloudApiError
-from .const import ID_PREFIX
+from .const import DOMAIN, ID_PREFIX
 from .coordinator import DeyeCloudCoordinator
 from .discovery import config_has, has_battery
-from .entity import DeyeDeviceEntity, async_add_discovered
+from .entity import DeyeDeviceEntity, async_add_discovered, rejected
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -47,14 +47,13 @@ _LABEL_TO_API = {label: api for api, label in _PATTERN_LABELS.items()}
 class DeyeEnergyPatternSelect(DeyeDeviceEntity, SelectEntity):
     """Energy management pattern: whether load or battery is served first."""
 
-    _attr_icon = "mdi:home-lightning-bolt"
     _attr_options = list(_PATTERN_LABELS.values())
 
     def __init__(self, coordinator: DeyeCloudCoordinator, device_sn: str) -> None:
         super().__init__(coordinator, device_sn)
         self._attr_unique_id = f"{device_sn}_energy_pattern"
         self.entity_id = f"select.{ID_PREFIX}_energy_pattern"
-        self._attr_name = "Energy Pattern"
+        self._attr_translation_key = "energy_pattern"
 
     @property
     def current_option(self) -> str | None:
@@ -70,13 +69,17 @@ class DeyeEnergyPatternSelect(DeyeDeviceEntity, SelectEntity):
     async def async_select_option(self, option: str) -> None:
         api_value = _LABEL_TO_API.get(option)
         if api_value is None:
-            raise HomeAssistantError(f"Unknown Energy Pattern: {option}")
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="unknown_option",
+                translation_placeholders={"name": str(self.name), "option": option},
+            )
         try:
             await self.coordinator.client.async_set_energy_pattern(
                 self._device_sn, api_value
             )
         except DeyeCloudApiError as err:
-            raise HomeAssistantError(f"Inverter rejected Energy Pattern: {err}") from err
+            raise rejected(self.name, err) from err
         self.coordinator.set_pending(self._device_sn, "energyPattern", api_value)
         self.async_write_ha_state()
         await self.coordinator.async_request_config_refresh()

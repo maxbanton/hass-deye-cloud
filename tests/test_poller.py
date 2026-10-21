@@ -27,9 +27,15 @@ class FakeClient:
         self.fail_latest = False
         self.fail_points = False
         self.points = ["SOC", "Power"]
+        self.rate_limited: set[str] = set()
+        self.failing: set[str] = set()
 
     def _count(self, name: str) -> None:
         self.calls[name] = self.calls.get(name, 0) + 1
+        if name in self.rate_limited:
+            raise DeyeCloudRateLimitError("quota exceeded")
+        if name in self.failing:
+            raise DeyeCloudApiError("Connection error: 500")
 
     async def async_get_stations_with_devices(self):
         self._count("inventory")
@@ -207,6 +213,52 @@ async def test_first_read_failure_leaves_devices_without_data(poller):
     assert poller.device_sns == []
 
 
+async def test_station_without_an_id_is_skipped(poller):
+    stations = [
+        {"name": "Unnamed", "deviceListItems": [{"deviceSn": "SN9"}]},
+        {"stationId": "2", "deviceListItems": [{"deviceType": "INVERTER"}]},
+    ]
+
+    async def inventory():
+        return stations
+
+    poller.client.async_get_stations_with_devices = inventory
+    data = await poller.async_poll()
+    assert list(data["stations"]) == ["2"]
+    assert data["devices"] == {}
+
+
+async def test_failed_station_read_leaves_its_values_empty(poller):
+    poller.client.failing.add("station_latest")
+    data = await poller.async_poll()
+    assert data["stations"]["1"]["data"] == {}
+    assert data["devices"]["SN1"]["data"] == {"Power": 1}
+
+
+async def test_failed_config_read_keeps_the_other_endpoints(poller):
+    poller.client.failing.add("config")
+    data = await poller.async_poll()
+    assert data["devices"]["SN1"]["config"] == {}
+    assert poller.config_read_at == {}
+
+
+@pytest.mark.parametrize(
+    "tier", ["inventory", "station_latest", "device_latest", "measure_points", "config"]
+)
+async def test_rate_limit_on_any_tier_stops_the_poll(poller, tier):
+    poller.client.rate_limited.add(tier)
+    with pytest.raises(DeyeCloudRateLimitError):
+        await poller.async_poll()
+
+
+async def test_rate_limit_on_inventory_refresh_is_not_hidden_by_the_cache(poller):
+    await poller.async_poll()
+    poller._stations_read -= INVENTORY_INTERVAL
+    poller.client.rate_limited.add("inventory")
+    with pytest.raises(DeyeCloudRateLimitError):
+        await poller.async_poll()
+
+
 def test_backoff_doubles_from_the_scan_interval():
     first = next_backoff(0, 180, None)
     assert first == 360
@@ -256,7 +308,12 @@ def test_ordinary_errors_are_not_treated_as_rate_limits(message):
 
 @pytest.mark.parametrize(
     "headers,expected",
-    [({"Retry-After": "120"}, 120.0), ({"Retry-After": "soon"}, None), ({}, None)],
+    [
+        ({"Retry-After": "120"}, 120.0),
+        ({"Retry-After": "soon"}, None),
+        ({}, None),
+        (None, None),
+    ],
 )
 def test_retry_after_parsing(headers, expected):
     assert _retry_after(headers) == expected

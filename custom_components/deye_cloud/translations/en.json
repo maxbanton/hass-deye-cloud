@@ -47,13 +47,286 @@
       "message": "Deye Cloud listed devices but returned no data for them; retrying."
     },
     "unknown_device": {
-      "message": "Unknown device_sn: {device_sn}"
+      "message": "Unknown inverter: {device_sn}"
     },
     "no_devices": {
       "message": "No Deye devices are set up yet."
     },
     "device_sn_required": {
       "message": "Multiple Deye devices are configured; set device_sn to pick one."
+    },
+    "tou_not_read": {
+      "message": "The Time Of Use table has not been read from the inverter yet. Give every slot all of time, power, batt, grid_charge and gen, or try again after the next update."
+    },
+    "command_rejected": {
+      "message": "The inverter rejected {name}: {error}"
+    },
+    "value_rejected": {
+      "message": "The inverter rejected {name} = {value}: {error}"
+    },
+    "unknown_option": {
+      "message": "{option} is not an option of {name}."
+    },
+    "tou_time_step": {
+      "message": "TOU slot {slot} time {time} has to be on a 5-minute step (e.g. 06:00, 06:05)."
+    },
+    "tou_time_after": {
+      "message": "TOU slot {slot} time {time} has to be later than the previous slot ({other})."
+    },
+    "tou_time_before": {
+      "message": "TOU slot {slot} time {time} has to be earlier than the next slot ({other})."
+    },
+    "auth_failed": {
+      "message": "Deye Cloud rejected the login: {error}"
+    },
+    "rate_limited": {
+      "message": "Rate limited by Deye Cloud; polling every {seconds}s until it clears: {error}"
+    },
+    "update_failed": {
+      "message": "Could not read from Deye Cloud: {error}"
+    }
+  },
+  "entity": {
+    "number": {
+      "low_battery_soc": {
+        "name": "Low Battery SOC"
+      },
+      "max_charge_current": {
+        "name": "Battery DC Charge Current"
+      },
+      "max_discharge_current": {
+        "name": "Battery DC Discharge Current"
+      },
+      "max_sell_power": {
+        "name": "Max Sell Power"
+      },
+      "tou_power": {
+        "name": "TOU Slot {slot} Power"
+      },
+      "tou_soc": {
+        "name": "TOU Slot {slot} SOC"
+      },
+      "tou_voltage": {
+        "name": "TOU Slot {slot} Voltage"
+      }
+    },
+    "select": {
+      "energy_pattern": {
+        "name": "Energy Pattern"
+      }
+    },
+    "sensor": {
+      "ac_current_rua": {
+        "name": "AC Current R-UA"
+      },
+      "ac_output_frequency_r": {
+        "name": "AC Output Frequency R"
+      },
+      "ac_temperature": {
+        "name": "AC Temperature"
+      },
+      "ac_voltage_rua": {
+        "name": "AC Voltage R-UA"
+      },
+      "battery_current": {
+        "name": "Battery Current"
+      },
+      "battery_power": {
+        "name": "Battery Power"
+      },
+      "battery_rated_capacity": {
+        "name": "Battery Rated Capacity"
+      },
+      "battery_voltage": {
+        "name": "Battery Voltage"
+      },
+      "cumulative_consumption": {
+        "name": "Cumulative Consumption"
+      },
+      "cumulative_energy_purchased": {
+        "name": "Cumulative Energy Purchased"
+      },
+      "cumulative_grid_feed_in": {
+        "name": "Cumulative Grid Feed-In"
+      },
+      "daily_active_production": {
+        "name": "Daily Active Production"
+      },
+      "daily_charging_energy": {
+        "name": "Daily Charging Energy"
+      },
+      "daily_consumption": {
+        "name": "Daily Consumption"
+      },
+      "daily_discharging_energy": {
+        "name": "Daily Discharging Energy"
+      },
+      "daily_energy_purchased": {
+        "name": "Daily Energy Purchased"
+      },
+      "daily_grid_feed_in": {
+        "name": "Daily Grid Feed-In"
+      },
+      "daily_production_generator": {
+        "name": "Daily Generator Production"
+      },
+      "dc_current_pv1": {
+        "name": "DC Current PV1"
+      },
+      "dc_current_pv2": {
+        "name": "DC Current PV2"
+      },
+      "dc_current_pv3": {
+        "name": "DC Current PV3"
+      },
+      "dc_power_pv1": {
+        "name": "DC Power PV1"
+      },
+      "dc_power_pv2": {
+        "name": "DC Power PV2"
+      },
+      "dc_power_pv3": {
+        "name": "DC Power PV3"
+      },
+      "dc_temperature": {
+        "name": "DC Temperature"
+      },
+      "dc_voltage_pv1": {
+        "name": "DC Voltage PV1"
+      },
+      "dc_voltage_pv2": {
+        "name": "DC Voltage PV2"
+      },
+      "dc_voltage_pv3": {
+        "name": "DC Voltage PV3"
+      },
+      "external_ct_power_l1_l2": {
+        "name": "External CT Power L1-L2"
+      },
+      "gen_daily_run_time": {
+        "name": "Generator Daily Run Time"
+      },
+      "gen_voltage": {
+        "name": "Generator Voltage"
+      },
+      "generator_frequency": {
+        "name": "Generator Frequency"
+      },
+      "grid_current_l1_l2": {
+        "name": "Grid Current L1-L2"
+      },
+      "grid_frequency": {
+        "name": "Grid Frequency"
+      },
+      "grid_total_reactive_power": {
+        "name": "Grid Total Reactive Power"
+      },
+      "grid_voltage_l1_l2": {
+        "name": "Grid Voltage L1-L2"
+      },
+      "inverter_output_power_l1_l2": {
+        "name": "Inverter Output Power L1-L2"
+      },
+      "inverter_total_reactive_power": {
+        "name": "Inverter Total Reactive Power"
+      },
+      "load_voltage_l1_l2": {
+        "name": "Load Voltage L1-L2"
+      },
+      "power_factor": {
+        "name": "Power Factor"
+      },
+      "pv_cumulative_power_generation_active": {
+        "name": "PV Cumulative Power Generation Active"
+      },
+      "pv_daily_power_generation_active": {
+        "name": "PV Daily Power Generation Active"
+      },
+      "rated_power": {
+        "name": "Rated Power"
+      },
+      "soc": {
+        "name": "SOC"
+      },
+      "station_battery_power": {
+        "name": "Battery Power (Station)"
+      },
+      "station_battery_soc": {
+        "name": "Battery SOC (Station)"
+      },
+      "station_charge_power": {
+        "name": "Charge Power (Station)"
+      },
+      "station_consumption_power": {
+        "name": "Consumption Power (Station)"
+      },
+      "station_discharge_power": {
+        "name": "Discharge Power (Station)"
+      },
+      "station_generation_power": {
+        "name": "Generation Power (Station)"
+      },
+      "station_grid_power": {
+        "name": "Grid Power (Station)"
+      },
+      "station_irradiate_intensity": {
+        "name": "Irradiate Intensity (Station)"
+      },
+      "station_purchase_power": {
+        "name": "Purchase Power (Station)"
+      },
+      "station_wire_power": {
+        "name": "Wire Power (Station)"
+      },
+      "temperature_battery": {
+        "name": "Battery Temperature"
+      },
+      "total_active_production": {
+        "name": "Total Active Production"
+      },
+      "total_charge_energy": {
+        "name": "Total Charge Energy"
+      },
+      "total_consumption_power": {
+        "name": "Total Consumption Power"
+      },
+      "total_dc_input_power": {
+        "name": "Total DC Input Power"
+      },
+      "total_discharge_energy": {
+        "name": "Total Discharge Energy"
+      },
+      "total_gen_power": {
+        "name": "Total Generator Power"
+      },
+      "total_grid_power": {
+        "name": "Total Grid Power"
+      },
+      "total_production_generator": {
+        "name": "Total Generator Production"
+      },
+      "ups_load_power": {
+        "name": "UPS Load Power"
+      }
+    },
+    "switch": {
+      "solar_sell": {
+        "name": "Solar Sell"
+      },
+      "time_of_use": {
+        "name": "Time Of Use"
+      },
+      "tou_gen": {
+        "name": "TOU Slot {slot} Generator"
+      },
+      "tou_grid_charge": {
+        "name": "TOU Slot {slot} Grid Charge"
+      }
+    },
+    "time": {
+      "tou_time": {
+        "name": "TOU Slot {slot} Time Start"
+      }
     }
   }
 }

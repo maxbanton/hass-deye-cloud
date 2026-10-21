@@ -1,6 +1,7 @@
 {
   "domain": "deye_cloud",
   "name": "Deye Cloud",
+  "after_dependencies": ["frontend", "http"],
   "codeowners": ["@maxbanton"],
   "config_flow": true,
   "documentation": "https://github.com/maxbanton/hass-deye-cloud",

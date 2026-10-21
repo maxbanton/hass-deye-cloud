@@ -152,3 +152,13 @@ async def test_options_change_reloads_with_the_new_interval(hass: HomeAssistant)
 
     assert entry.state is ConfigEntryState.LOADED
     assert entry.runtime_data.update_interval.total_seconds() == 600
+
+
+async def test_entities_are_named_after_their_device(hass: HomeAssistant) -> None:
+    await _setup(hass)
+
+    assert hass.states.get("sensor.deye_soc").attributes["friendly_name"] == "Deye INVERTER SOC"
+    # Measure points without a curated name keep a generated one.
+    entry = er.async_get(hass).async_get("sensor.deye_inverter_output_frequency")
+    assert entry.original_name == "Inverter Output Frequency"
+    assert entry.translation_key is None

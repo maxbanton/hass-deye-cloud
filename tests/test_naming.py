@@ -13,10 +13,14 @@ except ImportError:  # pragma: no cover
     from homeassistant.components.sensor import DEVICE_CLASS_STATE_CLASSES
 from homeassistant.const import (
     PERCENTAGE,
+    UnitOfApparentPower,
+    UnitOfElectricCurrent,
     UnitOfElectricPotential,
     UnitOfEnergy,
+    UnitOfFrequency,
     UnitOfPower,
     UnitOfReactivePower,
+    UnitOfTemperature,
     UnitOfTime,
 )
 
@@ -129,3 +133,24 @@ def test_names_non_empty_and_slugs_unique():
     sta_slugs = [slugify_key(k) for k in STATION_SENSOR_NAMES]
     assert len(set(dev_slugs)) == len(dev_slugs)
     assert len(set(sta_slugs)) == len(sta_slugs)
+
+
+@pytest.mark.parametrize(
+    "key,expected",
+    [
+        (
+            "LoadApparentPowerL1",
+            (DC.APPARENT_POWER, SC.MEASUREMENT, UnitOfApparentPower.VOLT_AMPERE),
+        ),
+        ("BMSCurrentLimit", (DC.CURRENT, SC.MEASUREMENT, UnitOfElectricCurrent.AMPERE)),
+        ("GeneratorFrequency", (DC.FREQUENCY, SC.MEASUREMENT, UnitOfFrequency.HERTZ)),
+        ("RadiatorTemperature", (DC.TEMPERATURE, SC.MEASUREMENT, UnitOfTemperature.CELSIUS)),
+        ("BMSSoc", (DC.BATTERY, SC.MEASUREMENT, PERCENTAGE)),
+        ("RunStatus", (None, None, None)),
+    ],
+)
+def test_unknown_keys_are_classified_by_name(key, expected):
+    dc, sc, unit = expected
+    assert device_class_for(key) == dc
+    assert state_class_for(key) == sc
+    assert unit_fallback(key) == (unit is not None, unit)

@@ -7,12 +7,13 @@ from datetime import time as dt_time
 
 from homeassistant.components.time import TimeEntity
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import DeyeCloudConfigEntry
 from .api import DeyeCloudApiError
-from .entity import async_add_discovered
+from .const import DOMAIN
+from .entity import async_add_discovered, rejected
 from .tou import DeyeTouSlotEntity, effective_tou_slots, tou_slot_indices
 
 _LOGGER = logging.getLogger(__name__)
@@ -67,8 +68,6 @@ class DeyeTouSlotTime(DeyeTouSlotEntity, TimeEntity):
     _domain = "time"
     _field = "time"
     _slug = "time"
-    _label = "Time Start"
-    _attr_icon = "mdi:clock-outline"
 
     @property
     def native_value(self) -> dt_time | None:
@@ -77,16 +76,23 @@ class DeyeTouSlotTime(DeyeTouSlotEntity, TimeEntity):
     async def async_set_value(self, value: dt_time) -> None:
         if value.minute % 5:
             # The TOU update endpoint only takes times in 5-minute steps.
-            raise HomeAssistantError(
-                f"TOU Slot {self._index + 1} time {value.strftime('%H:%M')} must be "
-                "on a 5-minute step (e.g. 06:00, 06:05)"
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="tou_time_step",
+                translation_placeholders=self._time_placeholders(value),
             )
         self._validate_order(value)
         hhmm = value.strftime("%H%M")
         try:
             await self._commit(hhmm)
         except DeyeCloudApiError as err:
-            raise HomeAssistantError(f"Inverter rejected {self._attr_name}: {err}") from err
+            raise rejected(self.name, err) from err
+
+    def _time_placeholders(self, value: dt_time, other: int | None = None) -> dict[str, str]:
+        placeholders = {"slot": str(self._index + 1), "time": value.strftime("%H:%M")}
+        if other is not None:
+            placeholders["other"] = f"{other // 60:02d}:{other % 60:02d}"
+        return placeholders
 
     def _validate_order(self, value: dt_time) -> None:
         """Reject a time that would break the strictly-ascending slot order.
@@ -104,12 +110,14 @@ class DeyeTouSlotTime(DeyeTouSlotEntity, TimeEntity):
             else None
         )
         if prev is not None and new <= prev:
-            raise HomeAssistantError(
-                f"TOU Slot {self._index + 1} time {value.strftime('%H:%M')} must be "
-                f"later than the previous slot ({prev // 60:02d}:{prev % 60:02d})"
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="tou_time_after",
+                translation_placeholders=self._time_placeholders(value, prev),
             )
         if nxt is not None and new >= nxt:
-            raise HomeAssistantError(
-                f"TOU Slot {self._index + 1} time {value.strftime('%H:%M')} must be "
-                f"earlier than the next slot ({nxt // 60:02d}:{nxt % 60:02d})"
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="tou_time_before",
+                translation_placeholders=self._time_placeholders(value, nxt),
             )

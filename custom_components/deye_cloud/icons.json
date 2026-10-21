@@ -1,0 +1,59 @@
+{
+  "entity": {
+    "number": {
+      "max_charge_current": {
+        "default": "mdi:current-dc"
+      },
+      "max_discharge_current": {
+        "default": "mdi:current-dc"
+      },
+      "max_sell_power": {
+        "default": "mdi:transmission-tower-export"
+      },
+      "low_battery_soc": {
+        "default": "mdi:battery-low"
+      },
+      "tou_soc": {
+        "default": "mdi:battery-charging-70"
+      },
+      "tou_power": {
+        "default": "mdi:flash"
+      },
+      "tou_voltage": {
+        "default": "mdi:sine-wave"
+      }
+    },
+    "select": {
+      "energy_pattern": {
+        "default": "mdi:home-lightning-bolt"
+      }
+    },
+    "switch": {
+      "solar_sell": {
+        "default": "mdi:transmission-tower-export"
+      },
+      "time_of_use": {
+        "default": "mdi:calendar-clock"
+      },
+      "tou_grid_charge": {
+        "default": "mdi:transmission-tower-import"
+      },
+      "tou_gen": {
+        "default": "mdi:engine"
+      }
+    },
+    "time": {
+      "tou_time": {
+        "default": "mdi:clock-outline"
+      }
+    }
+  },
+  "services": {
+    "set_tou_schedule": {
+      "service": "mdi:calendar-clock"
+    },
+    "set_tou_days": {
+      "service": "mdi:calendar-week"
+    }
+  }
+}

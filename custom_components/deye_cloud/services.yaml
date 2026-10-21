@@ -3,11 +3,18 @@ set_tou_schedule:
   description: >-
     Write the inverter Time Of Use schedule (the Work Mode / Time Of Use table).
     Fields match the inverter screen: Time, Power, Batt, Grid Charge, Gen.
-    Provide all 6 slots in order.
+    Give 6 slots in order; fields left out keep their current value.
   fields:
+    device_id:
+      name: Inverter
+      description: The inverter to change. Omit if only one inverter is configured.
+      required: false
+      selector:
+        device:
+          integration: deye_cloud
     device_sn:
       name: Device serial
-      description: Inverter serial. Omit if only one inverter is configured.
+      description: Inverter serial, as an alternative to picking the device.
       required: false
       example: "2601234567"
       selector:
@@ -15,17 +22,15 @@ set_tou_schedule:
     slots:
       name: Slots
       description: >-
-        List of exactly 6 slots, in order. Each slot: time (HH:MM, 5-minute steps),
-        power (W), batt (%), grid_charge (true/false), gen (true/false); optional
-        sell (true/false).
+        List of exactly 6 slots, in order. Each slot can set time (HH:MM, 5-minute
+        steps), power (W), batt (%), grid_charge (true/false), gen (true/false) and
+        sell (true/false). Fields left out, or an empty slot {}, keep their current
+        value.
       required: true
       example: >-
-        [{"time":"01:00","power":6000,"batt":90,"grid_charge":true,"gen":false},
-        {"time":"05:00","power":6000,"batt":50,"grid_charge":false,"gen":false},
-        {"time":"09:00","power":6000,"batt":30,"grid_charge":false,"gen":false},
-        {"time":"13:00","power":6000,"batt":30,"grid_charge":false,"gen":false},
-        {"time":"17:00","power":6000,"batt":50,"grid_charge":false,"gen":false},
-        {"time":"21:00","power":6000,"batt":90,"grid_charge":true,"gen":false}]
+        [{"time":"01:00","batt":90,"grid_charge":true},
+        {"time":"05:00","batt":50}, {}, {}, {},
+        {"time":"21:00","batt":90,"grid_charge":true}]
       selector:
         object:
 

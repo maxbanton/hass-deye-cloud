@@ -1,6 +1,10 @@
 """The Deye Cloud integration."""
 from __future__ import annotations
 
+from pathlib import Path
+
+from homeassistant.components.frontend import add_extra_js_url
+from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
@@ -8,6 +12,7 @@ from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.typing import ConfigType
+from homeassistant.loader import async_get_integration
 
 from .api import DeyeCloudClient
 from .const import (
@@ -30,6 +35,10 @@ PLATFORMS = [Platform.SENSOR, Platform.SWITCH, Platform.NUMBER, Platform.TIME, P
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
+FRONTEND_URL = f"/{DOMAIN}/frontend"
+FRONTEND_PATH = Path(__file__).parent / "frontend"
+CARD_FILE = "deye-cloud-tou-card.js"
+
 type DeyeCloudConfigEntry = ConfigEntry[DeyeCloudCoordinator]
 
 
@@ -49,7 +58,23 @@ def build_client(hass: HomeAssistant, data: dict) -> DeyeCloudClient:
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Register the integration's actions, which exist without a config entry."""
     async_register_services(hass)
+    await _async_register_card(hass)
     return True
+
+
+async def _async_register_card(hass: HomeAssistant) -> None:
+    """Serve the time of use card and load it on every dashboard.
+
+    The frontend is only an after-dependency, so setups without it (tests,
+    headless installs) still load the integration.
+    """
+    if "frontend" not in hass.config.components or hass.http is None:
+        return
+    version = (await async_get_integration(hass, DOMAIN)).version
+    await hass.http.async_register_static_paths(
+        [StaticPathConfig(FRONTEND_URL, str(FRONTEND_PATH), True)]
+    )
+    add_extra_js_url(hass, f"{FRONTEND_URL}/{CARD_FILE}?v={version}")
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: DeyeCloudConfigEntry) -> bool:
