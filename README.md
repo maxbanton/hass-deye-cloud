@@ -1,6 +1,6 @@
 # Deye Cloud for Home Assistant
 
-[![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz)
+[![HACS](https://img.shields.io/badge/HACS-Default-41BDF5.svg)](https://hacs.xyz)
 [![Release](https://img.shields.io/github/v/release/maxbanton/hass-deye-cloud)](https://github.com/maxbanton/hass-deye-cloud/releases)
 [![Tests](https://github.com/maxbanton/hass-deye-cloud/actions/workflows/tests.yml/badge.svg)](https://github.com/maxbanton/hass-deye-cloud/actions/workflows/tests.yml)
 [![Validate](https://github.com/maxbanton/hass-deye-cloud/actions/workflows/validate.yml/badge.svg)](https://github.com/maxbanton/hass-deye-cloud/actions/workflows/validate.yml)
@@ -141,10 +141,9 @@ the integration never changes your schedule.
 
 Or manually:
 
-1. In HACS, open the three-dot menu and choose **Custom repositories**.
-2. Add `https://github.com/maxbanton/hass-deye-cloud` with category **Integration**.
-3. Install **Deye Cloud** and restart Home Assistant.
-4. Go to **Settings > Devices & Services > Add Integration** and pick **Deye Cloud**.
+1. In HACS, search for **Deye Cloud**.
+2. Install it and restart Home Assistant.
+3. Go to **Settings > Devices & Services > Add Integration** and pick **Deye Cloud**.
 
 ## Configuration
 
