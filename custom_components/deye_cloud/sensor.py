@@ -72,7 +72,11 @@ class DeyeDeviceSensor(DeyeDeviceEntity, SensorEntity):
         self._key = key
         self._attr_unique_id = f"{device_sn}_{key}"
         self.entity_id = f"sensor.{ID_PREFIX}_{slugify_key(key)}"
-        self._attr_name = DEVICE_SENSOR_NAMES.get(key) or humanize_key(key)
+        # Keys the API adds later have no translation and keep a generated name.
+        if key in DEVICE_SENSOR_NAMES:
+            self._attr_translation_key = slugify_key(key)
+        else:
+            self._attr_name = humanize_key(key)
         self._attr_device_class = device_class_for(key)
         self._attr_state_class = state_class_for(key)
         if not device_sensor_enabled_default(key):
@@ -100,8 +104,10 @@ class DeyeStationSensor(DeyeStationEntity, SensorEntity):
         self._key = key
         self._attr_unique_id = f"{station_id}_{key}"
         self.entity_id = f"sensor.{ID_PREFIX}_station_{slugify_key(key)}"
-        base = STATION_SENSOR_NAMES.get(key) or humanize_key(key)
-        self._attr_name = f"{base} (Station)"
+        if key in STATION_SENSOR_NAMES:
+            self._attr_translation_key = f"station_{slugify_key(key)}"
+        else:
+            self._attr_name = f"{humanize_key(key)} (Station)"
         self._attr_device_class = device_class_for(key)
         self._attr_state_class = state_class_for(key)
         _, self._attr_native_unit_of_measurement = unit_fallback(key)

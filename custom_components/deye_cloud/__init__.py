@@ -10,6 +10,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.typing import ConfigType
 
 from .api import DeyeCloudClient
+from .card import async_add_card_resource, async_remove_card_resource, async_serve_card
 from .const import (
     CONF_APP_ID,
     CONF_APP_SECRET,
@@ -49,11 +50,13 @@ def build_client(hass: HomeAssistant, data: dict) -> DeyeCloudClient:
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Register the integration's actions, which exist without a config entry."""
     async_register_services(hass)
+    await async_serve_card(hass)
     return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: DeyeCloudConfigEntry) -> bool:
     """Set up Deye Cloud from a config entry."""
+    await async_add_card_resource(hass)
     coordinator = DeyeCloudCoordinator(
         hass,
         build_client(hass, dict(entry.data)),
@@ -83,3 +86,11 @@ async def async_reload_entry(hass: HomeAssistant, entry: DeyeCloudConfigEntry) -
 async def async_unload_entry(hass: HomeAssistant, entry: DeyeCloudConfigEntry) -> bool:
     """Unload a config entry."""
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: DeyeCloudConfigEntry) -> None:
+    """Drop the card from the dashboard resources with the last config entry."""
+    if not any(
+        other.entry_id != entry.entry_id for other in hass.config_entries.async_entries(DOMAIN)
+    ):
+        await async_remove_card_resource(hass)

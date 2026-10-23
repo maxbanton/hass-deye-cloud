@@ -102,15 +102,24 @@ class DeyeCloudCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             data = await self.poller.async_poll()
         except DeyeCloudAuthError as err:
             # Credentials were revoked or changed; ask the user to sign in again.
-            raise ConfigEntryAuthFailed(str(err)) from err
+            raise ConfigEntryAuthFailed(
+                translation_domain=DOMAIN,
+                translation_key="auth_failed",
+                translation_placeholders={"error": str(err)},
+            ) from err
         except DeyeCloudRateLimitError as err:
             self._apply_backoff(err.retry_after)
             raise UpdateFailed(
-                f"Rate limited by Deye Cloud; polling every "
-                f"{int(self._backoff)}s until it clears: {err}"
+                translation_domain=DOMAIN,
+                translation_key="rate_limited",
+                translation_placeholders={"seconds": str(int(self._backoff)), "error": str(err)},
             ) from err
         except DeyeCloudApiError as err:
-            raise UpdateFailed(str(err)) from err
+            raise UpdateFailed(
+                translation_domain=DOMAIN,
+                translation_key="update_failed",
+                translation_placeholders={"error": str(err)},
+            ) from err
         self._clear_backoff()
         return data
 

@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 import voluptuous as vol
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.deye_cloud.api import DeyeCloudApiError
@@ -195,5 +195,89 @@ async def test_action_needs_all_six_slots(hass: HomeAssistant, entry, set_tou) -
     with pytest.raises(vol.Invalid):
         await hass.services.async_call(
             DOMAIN, "set_tou_schedule", {"slots": slots}, blocking=True
+        )
+    set_tou.assert_not_awaited()
+
+
+async def test_action_changes_only_the_fields_given(
+    hass: HomeAssistant, entry, set_tou
+) -> None:
+    await _set_soc(hass, 1, 70)
+    await hass.services.async_call(
+        DOMAIN,
+        "set_tou_schedule",
+        {"slots": [{}, {"batt": 40, "grid_charge": True}, {}, {}, {}, {}]},
+        blocking=True,
+    )
+
+    sent = set_tou.await_args_list[-1].args[1]
+    # Slot 1 keeps the edit that has not read back yet.
+    assert [s["soc"] for s in sent[:3]] == [70, 40, 50]
+    assert sent[1]["enableGridCharge"] is True
+    assert sent[1]["time"] == "0500"
+    schedule = hass.states.get("switch.deye_maintain_battery_level").attributes["schedule"]
+    assert [s["soc"] for s in schedule[:2]] == [70, 40]
+
+
+async def test_action_can_target_the_device(hass: HomeAssistant, entry, set_tou) -> None:
+    from homeassistant.helpers import device_registry as dr
+
+    device = next(
+        d for d in dr.async_entries_for_config_entry(dr.async_get(hass), entry.entry_id)
+        if not any(i.startswith("station_") for _, i in d.identifiers)
+    )
+    await hass.services.async_call(
+        DOMAIN, "set_tou_schedule",
+        {"device_id": device.id, "slots": [{"batt": 20}, {}, {}, {}, {}, {}]},
+        blocking=True,
+    )
+    assert set_tou.await_args_list[-1].args[1][0]["soc"] == 20
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call(
+            DOMAIN, "set_tou_schedule",
+            {"device_id": "nope", "slots": [{}] * 6},
+            blocking=True,
+        )
+
+
+async def test_partial_action_needs_the_table_read_first(
+    hass: HomeAssistant, entry, set_tou, get_tou
+) -> None:
+    coordinator = entry.runtime_data
+    for device in coordinator.data["devices"].values():
+        device.get("config", {})["timeUseSettingItems"] = []
+    with pytest.raises(ServiceValidationError, match="not been read"):
+        await hass.services.async_call(
+            DOMAIN, "set_tou_schedule",
+            {"slots": [{"batt": 20}, {}, {}, {}, {}, {}]},
+            blocking=True,
+        )
+    set_tou.assert_not_awaited()
+
+
+async def test_slot_entities_are_named_by_slot(hass: HomeAssistant, entry) -> None:
+    assert hass.states.get("number.deye_tou3_soc").attributes["friendly_name"] == (
+        "Deye INVERTER TOU Slot 3 SOC"
+    )
+    assert hass.states.get("time.deye_tou1_time").attributes["friendly_name"] == (
+        "Deye INVERTER TOU Slot 1 Time Start"
+    )
+    assert hass.states.get("switch.deye_maintain_battery_level").attributes[
+        "friendly_name"
+    ] == "Deye INVERTER Time Of Use"
+
+
+async def test_out_of_order_slot_time_is_explained(hass: HomeAssistant, entry, set_tou) -> None:
+    with pytest.raises(ServiceValidationError, match="later than the previous slot"):
+        await hass.services.async_call(
+            "time", "set_value",
+            {"entity_id": "time.deye_tou2_time", "time": "00:30"},
+            blocking=True,
+        )
+    with pytest.raises(ServiceValidationError, match="earlier than the next slot"):
+        await hass.services.async_call(
+            "time", "set_value",
+            {"entity_id": "time.deye_tou2_time", "time": "09:30"},
+            blocking=True,
         )
     set_tou.assert_not_awaited()

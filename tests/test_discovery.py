@@ -1,6 +1,6 @@
 """Entities follow what the cloud reports for each inverter and station."""
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, PropertyMock, patch
 
 import pytest
 from homeassistant.core import HomeAssistant
@@ -150,3 +150,37 @@ async def test_controls_appear_once_a_failed_config_read_recovers(
 
     assert len(_registered(hass, "time")) == 6
 
+
+
+async def test_new_station_values_keep_a_generated_name(hass: HomeAssistant) -> None:
+    await _setup(
+        hass,
+        async_get_station_latest=AsyncMock(
+            return_value={"generationPower": 1200.0, "lastUpdateTime": 1760000000}
+        ),
+    )
+
+    entry = er.async_get(hass).async_get("sensor.deye_station_last_update_time")
+    assert entry.original_name == "Last Update Time (Station)"
+    assert entry.translation_key is None
+
+
+async def test_text_and_missing_readings_are_shown_as_they_are(hass: HomeAssistant) -> None:
+    with patch(
+        "homeassistant.helpers.entity.Entity.entity_registry_enabled_default",
+        new_callable=PropertyMock,
+        return_value=True,
+    ):
+        entry = await _setup(
+            hass,
+            async_get_device_latest=AsyncMock(
+                return_value={"SN1": {"data": {"SOC": 80, "RunStatus": "Normal"}, "units": {}}}
+            ),
+        )
+    assert hass.states.get("sensor.deye_run_status").state == "Normal"
+
+    entry.runtime_data.data["devices"]["SN1"]["data"]["RunStatus"] = None
+    entry.runtime_data.async_update_listeners()
+    await hass.async_block_till_done()
+
+    assert hass.states.get("sensor.deye_run_status").state == "unknown"

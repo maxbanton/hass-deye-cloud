@@ -8,7 +8,6 @@ from typing import Any
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import DeyeCloudConfigEntry
@@ -16,8 +15,8 @@ from .api import DeyeCloudApiError
 from .const import ID_PREFIX
 from .coordinator import DeyeCloudCoordinator
 from .discovery import config_has
-from .entity import DeyeDeviceEntity, async_add_discovered
-from .tou import DeyeTouSlotEntity, tou_slot_indices
+from .entity import DeyeDeviceEntity, async_add_discovered, rejected
+from .tou import DeyeTouSlotEntity, effective_tou_slots, tou_slot_indices
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -54,7 +53,6 @@ class DeyeSolarSellSwitch(DeyeDeviceEntity, SwitchEntity):
     so this is an assumed-state switch reflecting the last command sent.
     """
 
-    _attr_icon = "mdi:transmission-tower-export"
     _attr_assumed_state = True
     _attr_entity_category = EntityCategory.CONFIG
     _attr_entity_registry_enabled_default = False
@@ -63,7 +61,7 @@ class DeyeSolarSellSwitch(DeyeDeviceEntity, SwitchEntity):
         super().__init__(coordinator, device_sn)
         self._attr_unique_id = f"{device_sn}_solar_sell"
         self.entity_id = f"switch.{ID_PREFIX}_solar_sell"
-        self._attr_name = "Solar Sell"
+        self._attr_translation_key = "solar_sell"
         self._attr_is_on = None
 
     async def async_turn_on(self, **kwargs: Any) -> None:
@@ -76,7 +74,7 @@ class DeyeSolarSellSwitch(DeyeDeviceEntity, SwitchEntity):
         try:
             await self.coordinator.client.async_set_solar_sell(self._device_sn, enabled)
         except DeyeCloudApiError as err:
-            raise HomeAssistantError(f"Inverter rejected Solar Sell: {err}") from err
+            raise rejected(self.name, err) from err
         self._attr_is_on = enabled
         self.async_write_ha_state()
         await self.coordinator.async_request_config_refresh()
@@ -89,15 +87,16 @@ class DeyeTouSwitch(DeyeDeviceEntity, SwitchEntity):
     templating; set it with the deye_cloud.set_tou_schedule service.
     """
 
-    _attr_icon = "mdi:calendar-clock"
     _attr_entity_category = EntityCategory.CONFIG
+    # The slot entities already record the table's history.
+    _unrecorded_attributes = frozenset({"schedule"})
 
     def __init__(self, coordinator: DeyeCloudCoordinator, device_sn: str) -> None:
         super().__init__(coordinator, device_sn)
         self._attr_unique_id = f"{device_sn}_tou_enabled"
         # entity_id kept stable (was "Maintain Battery Level") so refs/history survive
         self.entity_id = f"switch.{ID_PREFIX}_maintain_battery_level"
-        self._attr_name = "Time Of Use"
+        self._attr_translation_key = "time_of_use"
 
     @property
     def is_on(self) -> bool | None:
@@ -110,7 +109,8 @@ class DeyeTouSwitch(DeyeDeviceEntity, SwitchEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        return {"schedule": self._device.get("config", {}).get("timeUseSettingItems")}
+        # Includes edits that have not read back yet, like the slot entities.
+        return {"schedule": effective_tou_slots(self.coordinator, self._device_sn) or None}
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         await self._set(True)
@@ -122,7 +122,7 @@ class DeyeTouSwitch(DeyeDeviceEntity, SwitchEntity):
         try:
             await self.coordinator.client.async_set_tou_switch(self._device_sn, enabled)
         except DeyeCloudApiError as err:
-            raise HomeAssistantError(f"Inverter rejected Time Of Use: {err}") from err
+            raise rejected(self.name, err) from err
         self.coordinator.set_pending(self._device_sn, "touAction", "on" if enabled else "off")
         self.async_write_ha_state()
         await self.coordinator.async_request_config_refresh()
@@ -148,7 +148,7 @@ class _DeyeTouSlotSwitch(DeyeTouSlotEntity, SwitchEntity):
         try:
             await self._commit(enabled)
         except DeyeCloudApiError as err:
-            raise HomeAssistantError(f"Inverter rejected {self._attr_name}: {err}") from err
+            raise rejected(self.name, err) from err
 
 
 # Disabled by default: users typically set grid-charge / generator behaviour on
@@ -156,14 +156,10 @@ class _DeyeTouSlotSwitch(DeyeTouSlotEntity, SwitchEntity):
 class DeyeTouSlotGridCharge(_DeyeTouSlotSwitch):
     _field = "enableGridCharge"
     _slug = "grid_charge"
-    _label = "Grid Charge"
-    _attr_icon = "mdi:transmission-tower-import"
     _attr_entity_registry_enabled_default = False
 
 
 class DeyeTouSlotGen(_DeyeTouSlotSwitch):
     _field = "enableGeneration"
     _slug = "gen"
-    _label = "Generator"
-    _attr_icon = "mdi:engine"
     _attr_entity_registry_enabled_default = False

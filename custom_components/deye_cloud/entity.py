@@ -6,12 +6,26 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .coordinator import DeyeCloudCoordinator
+
+
+def rejected(name: Any, err: Exception, value: float | None = None) -> HomeAssistantError:
+    """The error for a command the cloud refused."""
+    placeholders = {"name": str(name), "error": str(err)}
+    if value is None:
+        key = "command_rejected"
+    else:
+        key = "value_rejected"
+        placeholders["value"] = f"{value:g}"
+    return HomeAssistantError(
+        translation_domain=DOMAIN, translation_key=key, translation_placeholders=placeholders
+    )
 
 
 @callback
@@ -41,7 +55,7 @@ def async_add_discovered(
 class DeyeDeviceEntity(CoordinatorEntity[DeyeCloudCoordinator]):
     """Base for entities tied to a Deye device (inverter)."""
 
-    _attr_has_entity_name = False
+    _attr_has_entity_name = True
 
     def __init__(self, coordinator: DeyeCloudCoordinator, device_sn: str) -> None:
         super().__init__(coordinator)
@@ -72,7 +86,7 @@ class DeyeDeviceEntity(CoordinatorEntity[DeyeCloudCoordinator]):
 class DeyeStationEntity(CoordinatorEntity[DeyeCloudCoordinator]):
     """Base for station-level entities."""
 
-    _attr_has_entity_name = False
+    _attr_has_entity_name = True
 
     def __init__(self, coordinator: DeyeCloudCoordinator, station_id: str) -> None:
         super().__init__(coordinator)

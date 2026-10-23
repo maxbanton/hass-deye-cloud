@@ -96,7 +96,6 @@ class DeyeTouSlotEntity(DeyeDeviceEntity):
     _domain: str = ""       # entity_id domain (number/switch/time)
     _field: str = ""        # slot dict key this entity edits
     _slug: str = ""         # entity_id suffix
-    _label: str = ""        # friendly-name suffix
 
     def __init__(
         self, coordinator: DeyeCloudCoordinator, device_sn: str, index: int
@@ -105,7 +104,8 @@ class DeyeTouSlotEntity(DeyeDeviceEntity):
         self._index = index
         self._attr_unique_id = f"{device_sn}_tou{index + 1}_{self._slug}"
         self.entity_id = f"{self._domain}.{ID_PREFIX}_tou{index + 1}_{self._slug}"
-        self._attr_name = f"TOU Slot {index + 1} {self._label}"
+        self._attr_translation_key = f"tou_{self._slug}"
+        self._attr_translation_placeholders = {"slot": str(index + 1)}
 
     @property
     def _slot(self) -> dict[str, Any] | None:

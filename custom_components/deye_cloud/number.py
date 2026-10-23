@@ -13,7 +13,6 @@ from homeassistant.const import (
     UnitOfPower,
 )
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import DeyeCloudConfigEntry
@@ -21,7 +20,7 @@ from .api import DeyeCloudApiError
 from .const import ID_PREFIX
 from .coordinator import DeyeCloudCoordinator
 from .discovery import config_has
-from .entity import DeyeDeviceEntity, async_add_discovered
+from .entity import DeyeDeviceEntity, async_add_discovered, rejected
 from .tou import DeyeTouSlotEntity, tou_slot_indices
 
 _LOGGER = logging.getLogger(__name__)
@@ -71,6 +70,7 @@ class _DeyeNumber(DeyeDeviceEntity, NumberEntity):
         super().__init__(coordinator, device_sn)
         self._attr_unique_id = f"{device_sn}_{self._slug}"
         self.entity_id = f"number.{ID_PREFIX}_{self._slug}"
+        self._attr_translation_key = self._slug
 
     @property
     def native_value(self) -> float | None:
@@ -84,9 +84,7 @@ class _DeyeNumber(DeyeDeviceEntity, NumberEntity):
         try:
             await self._apply(int(value))
         except DeyeCloudApiError as err:
-            raise HomeAssistantError(
-                f"Inverter rejected {self._attr_name} = {int(value)}: {err}"
-            ) from err
+            raise rejected(self.name, err, value) from err
         await self.coordinator.async_request_config_refresh()
 
     async def _apply(self, value: int) -> None:
@@ -107,7 +105,6 @@ class _DeyeCurrentNumber(_DeyeNumber):
     """Battery current set-point; the inverter enforces the real per-model limit."""
 
     _attr_entity_category = None  # primary control, not Configuration
-    _attr_icon = "mdi:current-dc"
     _attr_native_unit_of_measurement = UnitOfElectricCurrent.AMPERE
     _attr_native_min_value = 0
     _attr_native_max_value = _CURRENT_UI_MAX
@@ -115,7 +112,6 @@ class _DeyeCurrentNumber(_DeyeNumber):
 
 
 class DeyeMaxChargeCurrent(_DeyeCurrentNumber):
-    _attr_name = "Battery DC Charge Current"
     _config_key = "maxChargeCurrent"
     _slug = "max_charge_current"
 
@@ -126,7 +122,6 @@ class DeyeMaxChargeCurrent(_DeyeCurrentNumber):
 
 
 class DeyeMaxDischargeCurrent(_DeyeCurrentNumber):
-    _attr_name = "Battery DC Discharge Current"
     _attr_entity_registry_enabled_default = False
     _config_key = "maxDischargeCurrent"
     _slug = "max_discharge_current"
@@ -138,8 +133,6 @@ class DeyeMaxDischargeCurrent(_DeyeCurrentNumber):
 
 
 class DeyeMaxSellPower(_DeyeNumber):
-    _attr_name = "Max Sell Power"
-    _attr_icon = "mdi:transmission-tower-export"
     _attr_entity_registry_enabled_default = False
     _attr_native_unit_of_measurement = UnitOfPower.WATT
     _attr_native_min_value = 0
@@ -157,8 +150,6 @@ class DeyeMaxSellPower(_DeyeNumber):
 class DeyeLowBatterySoc(_DeyeNumber):
     """Low Battery SOC (the inverter's Low Batt / battLowCapacity setting)."""
 
-    _attr_name = "Low Battery SOC"
-    _attr_icon = "mdi:battery-low"
     _attr_entity_category = None  # primary control, not Configuration
     _attr_entity_registry_enabled_default = False
     _attr_native_unit_of_measurement = PERCENTAGE
@@ -191,16 +182,12 @@ class _DeyeTouSlotNumber(DeyeTouSlotEntity, NumberEntity):
         try:
             await self._commit(int(value))
         except (DeyeCloudApiError, ValueError) as err:
-            raise HomeAssistantError(
-                f"Inverter rejected {self._attr_name} = {int(value)}: {err}"
-            ) from err
+            raise rejected(self.name, err, value) from err
 
 
 class DeyeTouSlotSoc(_DeyeTouSlotNumber):
     _field = "soc"
     _slug = "soc"
-    _label = "SOC"
-    _attr_icon = "mdi:battery-charging-70"
     _attr_mode = NumberMode.SLIDER
     _attr_native_unit_of_measurement = PERCENTAGE
     _attr_native_min_value = 0
@@ -213,8 +200,6 @@ class DeyeTouSlotPower(_DeyeTouSlotNumber):
 
     _field = "power"
     _slug = "power"
-    _label = "Power"
-    _attr_icon = "mdi:flash"
     _attr_mode = NumberMode.SLIDER
     _attr_native_unit_of_measurement = UnitOfPower.WATT
     _attr_native_min_value = 0
@@ -239,8 +224,6 @@ class DeyeTouSlotVoltage(_DeyeTouSlotNumber):
 
     _field = "voltage"
     _slug = "voltage"
-    _label = "Voltage"
-    _attr_icon = "mdi:sine-wave"
     _attr_native_unit_of_measurement = UnitOfElectricPotential.VOLT
     _attr_native_min_value = 40
     _attr_native_max_value = 60
