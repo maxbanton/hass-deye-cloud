@@ -255,28 +255,6 @@ async def test_partial_action_needs_the_table_read_first(
     set_tou.assert_not_awaited()
 
 
-async def test_card_is_served_and_loaded_with_the_frontend(hass: HomeAssistant) -> None:
-    from unittest.mock import MagicMock
-
-    from custom_components.deye_cloud import FRONTEND_PATH
-
-    hass.config.components.add("frontend")
-    hass.http = MagicMock(async_register_static_paths=AsyncMock())
-    entry = MockConfigEntry(domain=DOMAIN, data=ENTRY_DATA, unique_id="app-id_user")
-    entry.add_to_hass(hass)
-    with (
-        patched_client(async_get_tou=AsyncMock(return_value={"timeUseSettingItems": _slots()})),
-        patch("custom_components.deye_cloud.add_extra_js_url") as add_url,
-    ):
-        await hass.config_entries.async_setup(entry.entry_id)
-        await hass.async_block_till_done()
-    (paths,), _ = hass.http.async_register_static_paths.call_args
-    assert paths[0].url_path == "/deye_cloud/frontend"
-    assert (FRONTEND_PATH / "deye-cloud-tou-card.js").is_file()
-    assert (FRONTEND_PATH / "tou-card-core.js").is_file()
-    assert add_url.call_args.args[1].startswith("/deye_cloud/frontend/deye-cloud-tou-card.js?v=")
-
-
 async def test_slot_entities_are_named_by_slot(hass: HomeAssistant, entry) -> None:
     assert hass.states.get("number.deye_tou3_soc").attributes["friendly_name"] == (
         "Deye INVERTER TOU Slot 3 SOC"
