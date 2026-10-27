@@ -72,8 +72,8 @@ set_grid_peak_shaving:
   description: >-
     Turn grid peak shaving on or off, optionally with a new limit. While it is
     on, power drawn from the grid is held under the limit and the battery and PV
-    cover the rest. The Deye Cloud cannot read this setting back, so it is an
-    action rather than an entity; the inverter confirms each command.
+    cover the rest. The Deye Cloud API has no field for this setting, so it is
+    an action rather than an entity; the inverter confirms each command.
   fields:
     device_id:
       name: Inverter

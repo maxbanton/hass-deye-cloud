@@ -219,8 +219,9 @@ data:
 ```
 
 `power` is in watts; leave it out to keep the limit the inverter has. The Deye
-Cloud does not report the peak shaving state or limit, so there is no entity for
-it: the inverter confirms each command, and a refused one raises an error.
+Cloud API has no field for peak shaving. Its registers can only be read as raw
+Modbus, at addresses that differ between models, so there is no entity for it.
+The inverter confirms each command, and a refused one raises an error.
 
 ## Installation (HACS)
 
