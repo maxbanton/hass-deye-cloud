@@ -66,12 +66,13 @@ outage, use a local option (RS485 with ESP32, or SolarAssistant) instead.
 - Controls on the device page. Time Of Use is exposed slot by slot: for each of
   the six slots a **SOC** target and a **Time Start**, with **Power**, **Voltage**,
   **Grid Charge** and **Generator** available per slot too (disabled by default,
-  enable any you need). Alongside them a **Battery DC Charge Current** number, an
-  **Energy Pattern** select (Load First / Battery First) and the **Time Of Use**
-  master switch. Battery DC Discharge Current, Low Battery SOC, Solar Sell and Max
-  Sell Power are provided but disabled by default. A `set_tou_schedule` service
-  writes the whole table in one call. Commands are asynchronous and confirmed
-  against the order status.
+  enable any you need). Alongside them **Battery DC Charge Current** and **Grid
+  Charge Current** numbers, an **Energy Pattern** select (Load First / Battery
+  First) and the **Time Of Use** master switch. Battery DC
+  Discharge Current, Low Battery SOC, Solar Sell and Max Sell Power are provided
+  but disabled by default. A `set_tou_schedule` service writes the whole table in
+  one call, and `set_grid_peak_shaving` controls grid peak shaving. Commands are
+  asynchronous and confirmed against the order status.
 - Entities follow what each inverter actually has. The integration reads the
   measure points Deye defines for the inverter's product and only the settings
   the inverter reports, so a string (on-grid) inverter gets no battery or Time Of
@@ -192,6 +193,35 @@ its own card, **Deye Local Time Of Use**, and both can be used side by side for
 different inverters.
 
 
+## Grid charge current
+
+**Grid Charge Current** (number) caps the part of the battery charge current that
+comes from the grid, as on the inverter's Battery Setting screen. **Battery DC
+Charge Current** is a separate limit on the total charge current from every
+source, PV included.
+
+The Deye Cloud has no plain endpoint for it, so it is read with a request the
+cloud passes on to the inverter. It is only made for inverters with a
+battery, on the same interval as the other inverter settings.
+
+## Grid peak shaving
+
+With grid peak shaving on, the inverter holds the power it draws from the grid
+under a limit and covers the rest from the battery and PV. Set it with the
+**`deye_cloud.set_grid_peak_shaving`** action, for example a low limit by day and
+a higher one at night so the battery can still recharge:
+
+```yaml
+action: deye_cloud.set_grid_peak_shaving
+data:
+  enabled: true
+  power: 3000
+```
+
+`power` is in watts; leave it out to keep the limit the inverter has. The Deye
+Cloud does not report the peak shaving state or limit, so there is no entity for
+it: the inverter confirms each command, and a refused one raises an error.
+
 ## Installation (HACS)
 
 [![Open your Home Assistant instance and open this repository in HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=maxbanton&repository=hass-deye-cloud&category=integration)
@@ -219,8 +249,9 @@ Device Monitoring* and *Commission Control* permissions, then provide:
 Deye has announced usage tracking, quotas and rate limits for the Cloud
 OpenAPI, so this integration is deliberately frugal with calls. It polls in
 tiers: measurements every cycle, the station and device inventory hourly, and
-inverter settings (system, battery, Time Of Use) only every few minutes, plus a
-short burst of re-reads right after this integration writes a setting.
+inverter settings (system, battery, grid charge, Time Of Use) only every few
+minutes, plus a short burst of re-reads right after this integration writes a
+setting.
 
 Two intervals are adjustable under **Settings > Devices & Services > Deye Cloud
 > Configure**:
@@ -228,12 +259,12 @@ Two intervals are adjustable under **Settings > Devices & Services > Deye Cloud
 | Option | Default | What it controls |
 |--------|---------|------------------|
 | Measurement poll interval | 180 s | How often live station and device data is read |
-| Inverter settings poll interval | 15 min | How often system, battery and Time Of Use settings are re-read |
+| Inverter settings poll interval | 15 min | How often system, battery, grid charge and Time Of Use settings are re-read |
 
 Loggers upload to the Deye Cloud only every 3 to 5 minutes, so polling faster
 than the default gains little and costs quota. With the defaults and a single
-inverter the integration makes roughly 1,300 API calls per day; at a 5 minute
-measurement interval, roughly 700.
+inverter with a battery the integration makes roughly 1,500 API calls per day; at
+a 5 minute measurement interval, roughly 1,100.
 
 If the API answers with a rate limit, polling backs off automatically (doubling
 up to 30 minutes) and returns to normal once the limit clears.

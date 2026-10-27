@@ -42,6 +42,7 @@ async def async_setup_entry(
             for cls in (
                 DeyeMaxChargeCurrent,
                 DeyeMaxDischargeCurrent,
+                DeyeGridChargeCurrent,
                 DeyeMaxSellPower,
                 DeyeLowBatterySoc,
             ):
@@ -129,6 +130,18 @@ class DeyeMaxDischargeCurrent(_DeyeCurrentNumber):
     async def _apply(self, value: int) -> None:
         await self.coordinator.client.async_set_battery_param(
             self._device_sn, "MAX_DISCHARGE_CURRENT", value
+        )
+
+
+class DeyeGridChargeCurrent(_DeyeCurrentNumber):
+    """How much of the battery charge current may come from the grid."""
+
+    _config_key = "gridChargeAmpere"
+    _slug = "grid_charge_current"
+
+    async def _apply(self, value: int) -> None:
+        await self.coordinator.client.async_set_battery_param(
+            self._device_sn, "GRID_CHARGE_AMPERE", value
         )
 
 

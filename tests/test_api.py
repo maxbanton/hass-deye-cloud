@@ -348,6 +348,61 @@ async def test_config_reads_return_the_data_payload(
     assert _calls(signed_in, path)[0][2] == {"deviceSn": "SN1"}
 
 
+# --- dynamic-control read ----------------------------------------------------
+
+READ_URL = f"{BASE}/strategy/dynamicControl/read"
+RESULT_URL = f"{BASE}/strategy/dynamicControl/readResult"
+SENDING = {"code": "2104013", "msg": "Order is sending", "success": False, "requestId": "r2"}
+
+
+@pytest.fixture
+def no_wait():
+    with (
+        patch("custom_components.deye_cloud.api.DYNAMIC_READ_DELAY", 0),
+        patch("custom_components.deye_cloud.api.ORDER_POLL_INTERVAL", 0),
+    ):
+        yield
+
+
+async def test_dynamic_read_waits_for_the_inverter_to_answer(
+    client: DeyeCloudClient, signed_in: AiohttpClientMocker, no_wait
+) -> None:
+    signed_in.post(READ_URL, json={**OK, "msg": "order sent successfully", "orderId": 7})
+    signed_in.post(
+        RESULT_URL,
+        side_effect=_sequence(SENDING, SENDING, {**OK, "gridChargeAmpere": 30}),
+    )
+
+    assert await client.async_get_dynamic_config("SN1") == {"gridChargeAmpere": 30}
+    assert _calls(signed_in, "/dynamicControl/read")[0][2] == {"deviceSn": "SN1"}
+    assert [c[2] for c in _calls(signed_in, "/readResult")] == [{"orderId": 7}] * 3
+
+
+async def test_dynamic_read_without_an_order_id_raises(
+    client: DeyeCloudClient, signed_in: AiohttpClientMocker
+) -> None:
+    signed_in.post(READ_URL, json=OK)
+
+    with pytest.raises(DeyeCloudApiError, match="not accepted"):
+        await client.async_get_dynamic_config("SN1")
+    assert not _calls(signed_in, "/readResult")
+
+
+async def test_dynamic_read_unanswered_after_the_timeout_raises(
+    client: DeyeCloudClient, signed_in: AiohttpClientMocker, no_wait
+) -> None:
+    signed_in.post(READ_URL, json={**OK, "orderId": 7})
+    signed_in.post(RESULT_URL, json=SENDING)
+    clock = MagicMock()
+    clock.time.side_effect = itertools.count(1_000_000, 5)
+
+    with (
+        patch("custom_components.deye_cloud.api.time", clock),
+        pytest.raises(DeyeCloudApiError, match="timed out"),
+    ):
+        await client.async_get_dynamic_config("SN1")
+
+
 # --- control orders ----------------------------------------------------------
 
 
@@ -383,6 +438,24 @@ async def test_config_reads_return_the_data_payload(
             ("SN1", "MAX_CHARGE_CURRENT", 40),
             "/order/battery/parameter/update",
             {"deviceSn": "SN1", "paramterType": "MAX_CHARGE_CURRENT", "value": 40},
+        ),
+        (
+            "async_set_battery_param",
+            ("SN1", "GRID_CHARGE_AMPERE", 30),
+            "/order/battery/parameter/update",
+            {"deviceSn": "SN1", "paramterType": "GRID_CHARGE_AMPERE", "value": 30},
+        ),
+        (
+            "async_set_peak_shaving",
+            ("SN1", True, 3000),
+            "/order/gridPeakShaving/control",
+            {"deviceSn": "SN1", "action": "on", "power": 3000},
+        ),
+        (
+            "async_set_peak_shaving",
+            ("SN1", False),
+            "/order/gridPeakShaving/control",
+            {"deviceSn": "SN1", "action": "off"},
         ),
         (
             "async_set_power_param",

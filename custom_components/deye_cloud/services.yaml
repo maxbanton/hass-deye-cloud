@@ -66,3 +66,44 @@ set_tou_days:
             - FRIDAY
             - SATURDAY
             - SUNDAY
+
+set_grid_peak_shaving:
+  name: Set grid peak shaving
+  description: >-
+    Turn grid peak shaving on or off, optionally with a new limit. While it is
+    on, power drawn from the grid is held under the limit and the battery and PV
+    cover the rest. The Deye Cloud cannot read this setting back, so it is an
+    action rather than an entity; the inverter confirms each command.
+  fields:
+    device_id:
+      name: Inverter
+      description: The inverter to change. Omit if only one inverter is configured.
+      required: false
+      selector:
+        device:
+          integration: deye_cloud
+    device_sn:
+      name: Device serial
+      description: Inverter serial, as an alternative to picking the device.
+      required: false
+      example: "2601234567"
+      selector:
+        text:
+    enabled:
+      name: Enabled
+      description: Turn grid peak shaving on or off.
+      required: true
+      selector:
+        boolean:
+    power:
+      name: Power limit
+      description: Grid power limit in watts. Omit to keep the current limit.
+      required: false
+      example: 3000
+      selector:
+        number:
+          min: 0
+          max: 30000
+          step: 100
+          unit_of_measurement: W
+          mode: box

@@ -10,8 +10,8 @@ each kind of data only as often as it can actually change:
 * inverter measure points -- once per inverter (what its product can report);
   a failed read is retried on the next inventory refresh
 * inverter config      -- every ``config_interval`` minutes, plus a short burst
-  of re-reads after this integration writes a setting; battery and TOU config
-  only for inverters that have a battery
+  of re-reads after this integration writes a setting; battery, TOU and
+  dynamic-control config only for inverters that have a battery
 
 Cached values are reused between reads, so entity state never goes stale-empty
 just because a tier was skipped.
@@ -37,6 +37,10 @@ _LOGGER = logging.getLogger(__name__)
 
 # The API accepts at most 10 serial numbers per /device/latest call.
 DEVICE_BATCH_SIZE = 10
+
+# Only these are taken from the dynamic-control read; the rest of it repeats the
+# /config endpoints in other formats (TOU times as HH:MM rather than HHMM).
+DYNAMIC_CONFIG_KEYS = ("gridChargeAmpere", "solarSellAction")
 
 
 def next_backoff(
@@ -204,7 +208,11 @@ class DeyePoller:
             config: dict[str, Any] = {}
             fetches = [self.client.async_get_system_config]
             if has_battery(devices[sn]):
-                fetches += [self.client.async_get_battery_config, self.client.async_get_tou]
+                fetches += [
+                    self.client.async_get_battery_config,
+                    self.client.async_get_tou,
+                    self._async_dynamic_config,
+                ]
             for fetch in fetches:
                 try:
                     config.update(await fetch(sn))
@@ -220,3 +228,7 @@ class DeyePoller:
             self._config_catchup -= 1
         if 0 < self._readback_due <= now:
             self._readback_due = 0.0
+
+    async def _async_dynamic_config(self, device_sn: str) -> dict[str, Any]:
+        result = await self.client.async_get_dynamic_config(device_sn)
+        return {key: result[key] for key in DYNAMIC_CONFIG_KEYS if key in result}

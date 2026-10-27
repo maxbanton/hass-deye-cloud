@@ -46,6 +46,13 @@ HYBRID = {
     "async_get_tou": AsyncMock(
         return_value={"touAction": "on", "timeUseSettingItems": SLOTS}
     ),
+    "async_get_dynamic_config": AsyncMock(
+        return_value={
+            "gridChargeAmpere": 30,
+            "solarSellAction": "off",
+            "touAction": "on",
+        }
+    ),
 }
 
 # A string inverter: no battery measure points, and the system config holds
@@ -73,6 +80,7 @@ ON_GRID = {
     ),
     "async_get_battery_config": AsyncMock(side_effect=AssertionError("not read")),
     "async_get_tou": AsyncMock(side_effect=AssertionError("not read")),
+    "async_get_dynamic_config": AsyncMock(side_effect=AssertionError("not read")),
 }
 
 
@@ -96,6 +104,7 @@ async def test_hybrid_with_battery_gets_every_control(hass: HomeAssistant) -> No
     assert {
         "number.deye_max_charge_current",
         "number.deye_max_discharge_current",
+        "number.deye_grid_charge_current",
         "number.deye_max_sell_power",
         "number.deye_low_battery_soc",
         "number.deye_tou1_soc",
