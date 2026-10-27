@@ -69,6 +69,7 @@ async def async_get_config_entry_diagnostics(
                 "config_system": await _probe(client.async_get_system_config(sn)),
                 "config_battery": await _probe(client.async_get_battery_config(sn)),
                 "config_tou": await _probe(client.async_get_tou(sn)),
+                "config_dynamic": await _probe(client.async_get_dynamic_config(sn)),
             }
         devices.append(report)
 

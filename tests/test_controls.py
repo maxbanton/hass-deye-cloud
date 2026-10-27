@@ -78,6 +78,7 @@ async def _call(hass: HomeAssistant, domain: str, service: str, entity_id: str, 
     [
         ("number.deye_max_charge_current", "async_set_battery_param", "MAX_CHARGE_CURRENT"),
         ("number.deye_max_discharge_current", "async_set_battery_param", "MAX_DISCHARGE_CURRENT"),
+        ("number.deye_grid_charge_current", "async_set_battery_param", "GRID_CHARGE_AMPERE"),
         ("number.deye_low_battery_soc", "async_set_battery_param", "BATT_LOW"),
         ("number.deye_max_sell_power", "async_set_power_param", "MAX_SELL_POWER"),
     ],
@@ -133,8 +134,28 @@ async def test_refused_energy_pattern_keeps_the_current_one(
 # --- switches ----------------------------------------------------------------
 
 
-async def test_solar_sell_reflects_the_last_command(hass: HomeAssistant, entry, writes) -> None:
-    assert hass.states.get("switch.deye_solar_sell").state == "unknown"
+async def test_solar_sell_shows_the_read_back_and_then_the_command(
+    hass: HomeAssistant, entry, writes
+) -> None:
+    state = hass.states.get("switch.deye_solar_sell")
+    assert state.state == "off"
+    assert "assumed_state" not in state.attributes
+
+    await _call(hass, "switch", "turn_on", "switch.deye_solar_sell")
+
+    writes["async_set_solar_sell"].assert_awaited_once_with("SN1", True)
+    assert hass.states.get("switch.deye_solar_sell").state == "on"
+    await _cloud_reports(hass, entry, solarSellAction="on")
+    assert hass.states.get("switch.deye_solar_sell").state == "on"
+
+
+async def test_solar_sell_without_read_back_reflects_the_last_command(
+    hass: HomeAssistant, entry, writes
+) -> None:
+    await _cloud_reports(hass, entry, solarSellAction=None)
+    state = hass.states.get("switch.deye_solar_sell")
+    assert state.state == "unknown"
+    assert state.attributes["assumed_state"] is True
 
     await _call(hass, "switch", "turn_on", "switch.deye_solar_sell")
     assert hass.states.get("switch.deye_solar_sell").state == "on"
@@ -152,7 +173,7 @@ async def test_refused_solar_sell_keeps_its_state(hass: HomeAssistant, entry, wr
 
     with pytest.raises(HomeAssistantError, match="offline"):
         await _call(hass, "switch", "turn_on", "switch.deye_solar_sell")
-    assert hass.states.get("switch.deye_solar_sell").state == "unknown"
+    assert hass.states.get("switch.deye_solar_sell").state == "off"
 
 
 async def test_time_of_use_switch_shows_the_command_before_read_back(

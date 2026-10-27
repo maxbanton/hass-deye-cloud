@@ -79,6 +79,15 @@ class FakeClient:
         self._count("config")
         return {"touAction": "on", "timeUseSettingItems": []}
 
+    async def async_get_dynamic_config(self, device_sn):
+        self._count("dynamic")
+        return {
+            "gridChargeAmpere": 30,
+            "solarSellAction": "off",
+            "touAction": "off",
+            "timeUseSettingItems": [{"time": "01:00"}],
+        }
+
 
 @pytest.fixture
 def poller():
@@ -94,6 +103,7 @@ async def test_first_poll_reads_every_tier(poller):
         "device_latest": 1,
         "measure_points": 1,
         "config": 3,
+        "dynamic": 1,
     }
     assert data["devices"]["SN1"]["config"]["maxChargeCurrent"] == 40
     assert data["devices"]["SN1"]["measure_points"] == ["SOC", "Power"]
@@ -134,7 +144,25 @@ async def test_inverter_without_battery_skips_battery_and_tou_config(poller):
     poller.client.points = ["Power", "DailyActiveProduction"]
     data = await poller.async_poll()
     assert poller.client.calls["config"] == 1
+    assert "dynamic" not in poller.client.calls
     assert "maxChargeCurrent" not in data["devices"]["SN1"]["config"]
+
+
+async def test_dynamic_read_adds_only_what_the_config_endpoints_lack(poller):
+    data = await poller.async_poll()
+    config = data["devices"]["SN1"]["config"]
+    assert config["gridChargeAmpere"] == 30
+    assert config["solarSellAction"] == "off"
+    assert config["touAction"] == "on"
+    assert config["timeUseSettingItems"] == []
+
+
+async def test_failed_dynamic_read_keeps_the_config_endpoints(poller):
+    poller.client.failing.add("dynamic")
+    data = await poller.async_poll()
+    config = data["devices"]["SN1"]["config"]
+    assert config["maxChargeCurrent"] == 40
+    assert "gridChargeAmpere" not in config
 
 
 async def test_cached_config_still_served_when_tier_is_skipped(poller):
@@ -236,14 +264,15 @@ async def test_failed_station_read_leaves_its_values_empty(poller):
 
 
 async def test_failed_config_read_keeps_the_other_endpoints(poller):
-    poller.client.failing.add("config")
+    poller.client.failing |= {"config", "dynamic"}
     data = await poller.async_poll()
     assert data["devices"]["SN1"]["config"] == {}
     assert poller.config_read_at == {}
 
 
 @pytest.mark.parametrize(
-    "tier", ["inventory", "station_latest", "device_latest", "measure_points", "config"]
+    "tier",
+    ["inventory", "station_latest", "device_latest", "measure_points", "config", "dynamic"],
 )
 async def test_rate_limit_on_any_tier_stops_the_poll(poller, tier):
     poller.client.rate_limited.add(tier)

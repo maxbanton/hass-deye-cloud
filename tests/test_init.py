@@ -63,6 +63,7 @@ def patched_client(**overrides):
         "async_get_tou": AsyncMock(
             return_value={"touAction": "on", "timeUseSettingItems": []}
         ),
+        "async_get_dynamic_config": AsyncMock(return_value={}),
     }
     defaults.update(overrides)
     return patch.multiple(

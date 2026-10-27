@@ -1,4 +1,4 @@
-"""Services for Deye Cloud (time-of-use control)."""
+"""Services for Deye Cloud (time-of-use and peak shaving control)."""
 from __future__ import annotations
 
 import voluptuous as vol
@@ -14,6 +14,7 @@ from .tou import TOU_SLOT_COUNT, effective_tou_slots, set_pending_tou
 
 SERVICE_SET_TOU_SCHEDULE = "set_tou_schedule"
 SERVICE_SET_TOU_DAYS = "set_tou_days"
+SERVICE_SET_GRID_PEAK_SHAVING = "set_grid_peak_shaving"
 
 WEEKDAYS = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"]
 
@@ -74,6 +75,17 @@ _SET_TOU_DAYS_SCHEMA = vol.Schema(
 )
 
 
+_SET_PEAK_SHAVING_SCHEMA = vol.Schema(
+    {
+        vol.Optional("device_sn"): cv.string,
+        vol.Optional("device_id"): cv.string,
+        vol.Required("enabled"): cv.boolean,
+        # Left out, the inverter keeps the limit it has.
+        vol.Optional("power"): vol.All(vol.Coerce(int), vol.Range(min=0)),
+    }
+)
+
+
 def _device_sn(hass: HomeAssistant, device_id: str) -> str:
     """The inverter serial behind a device registry id."""
     device = dr.async_get(hass).async_get(device_id)
@@ -126,11 +138,14 @@ def async_register_services(hass: HomeAssistant) -> None:
     if hass.services.has_service(DOMAIN, SERVICE_SET_TOU_SCHEDULE):
         return
 
-    async def _set_tou_schedule(call: ServiceCall) -> None:
+    def _target(call: ServiceCall):
         device_sn = call.data.get("device_sn")
         if device_id := call.data.get("device_id"):
             device_sn = _device_sn(hass, device_id)
-        coordinator, sn = _resolve(hass, device_sn)
+        return _resolve(hass, device_sn)
+
+    async def _set_tou_schedule(call: ServiceCall) -> None:
+        coordinator, sn = _target(call)
         changes = _to_items(call.data["slots"])
         async with coordinator.tou_lock:
             current = effective_tou_slots(coordinator, sn)
@@ -166,9 +181,24 @@ def async_register_services(hass: HomeAssistant) -> None:
         coordinator.set_pending(sn, "touAction", "on" if call.data["enabled"] else "off")
         await coordinator.async_request_config_refresh()
 
+    async def _set_grid_peak_shaving(call: ServiceCall) -> None:
+        coordinator, sn = _target(call)
+        try:
+            await coordinator.client.async_set_peak_shaving(
+                sn, call.data["enabled"], call.data.get("power")
+            )
+        except DeyeCloudApiError as err:
+            raise rejected("Grid peak shaving", err) from err
+
     hass.services.async_register(
         DOMAIN, SERVICE_SET_TOU_SCHEDULE, _set_tou_schedule, schema=_SET_TOU_SCHEMA
     )
     hass.services.async_register(
         DOMAIN, SERVICE_SET_TOU_DAYS, _set_tou_days, schema=_SET_TOU_DAYS_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_SET_GRID_PEAK_SHAVING,
+        _set_grid_peak_shaving,
+        schema=_SET_PEAK_SHAVING_SCHEMA,
     )

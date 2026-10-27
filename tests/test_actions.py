@@ -2,6 +2,7 @@
 from unittest.mock import AsyncMock
 
 import pytest
+import voluptuous as vol
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 
@@ -120,3 +121,43 @@ async def test_actions_are_registered_once(hass: HomeAssistant) -> None:
     async_register_services(hass)
 
     assert hass.services.async_services()[DOMAIN] == before
+
+
+@pytest.mark.parametrize(
+    "data,expected",
+    [
+        ({"enabled": True, "power": 3000}, ("SN1", True, 3000)),
+        ({"enabled": False}, ("SN1", False, None)),
+    ],
+)
+async def test_peak_shaving_action_sends_only_what_was_given(
+    hass: HomeAssistant, data, expected
+) -> None:
+    await _setup(hass)
+    shaving = AsyncMock(return_value=None)
+
+    with patched_client(async_set_peak_shaving=shaving):
+        await hass.services.async_call(DOMAIN, "set_grid_peak_shaving", data, blocking=True)
+
+    shaving.assert_awaited_once_with(*expected)
+
+
+async def test_failed_peak_shaving_action_raises(hass: HomeAssistant) -> None:
+    await _setup(hass)
+
+    with (
+        patched_client(async_set_peak_shaving=AsyncMock(side_effect=DeyeCloudApiError("offline"))),
+        pytest.raises(HomeAssistantError, match="Grid peak shaving"),
+    ):
+        await hass.services.async_call(
+            DOMAIN, "set_grid_peak_shaving", {"enabled": True}, blocking=True
+        )
+
+
+async def test_peak_shaving_limit_cannot_be_negative(hass: HomeAssistant) -> None:
+    await _setup(hass)
+
+    with pytest.raises(vol.Invalid):
+        await hass.services.async_call(
+            DOMAIN, "set_grid_peak_shaving", {"enabled": True, "power": -1}, blocking=True
+        )

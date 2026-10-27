@@ -33,6 +33,7 @@ async def test_diagnostics_probe_every_config_endpoint(hass, hass_client) -> Non
     assert device["measure_points"] == ["SOC", "BatteryPower"]
     assert device["probe"]["config_battery"]["maxChargeCurrent"] == 40
     assert len(device["probe"]["config_tou"]["timeUseSettingItems"]) == 6
+    assert device["probe"]["config_dynamic"]["gridChargeAmpere"] == 30
 
 
 async def test_diagnostics_redact_credentials_and_serials(hass, hass_client) -> None:

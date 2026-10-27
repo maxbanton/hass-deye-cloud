@@ -21,6 +21,9 @@
       },
       "tou_voltage": {
         "default": "mdi:sine-wave"
+      },
+      "grid_charge_current": {
+        "default": "mdi:current-dc"
       }
     },
     "select": {
@@ -54,6 +57,9 @@
     },
     "set_tou_days": {
       "service": "mdi:calendar-week"
+    },
+    "set_grid_peak_shaving": {
+      "service": "mdi:transmission-tower"
     }
   }
 }

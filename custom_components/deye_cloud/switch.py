@@ -34,7 +34,7 @@ async def async_setup_entry(
     def discover() -> Iterator[SwitchEntity]:
         for sn in coordinator.device_sns:
             device = coordinator.data["devices"][sn]
-            # Solar sell has no read-back; inverters with a system work mode have it.
+            # Inverters with a system work mode have solar sell, read back or not.
             if config_has(device, "systemWorkMode"):
                 yield DeyeSolarSellSwitch(coordinator, sn)
             if config_has(device, "touAction"):
@@ -46,23 +46,25 @@ async def async_setup_entry(
     async_add_discovered(entry, async_add_entities, discover)
 
 
-class DeyeSolarSellSwitch(DeyeDeviceEntity, SwitchEntity):
-    """Toggle grid export (solar sell).
+class _DeyeConfigSwitch(DeyeDeviceEntity, SwitchEntity):
+    """An on/off inverter setting read back as ``"on"``/``"off"`` from config.
 
-    The Deye API accepts on/off but exposes no read-back of the current state,
-    so this is an assumed-state switch reflecting the last command sent.
+    A command shows at once and gives way to the read-back once it arrives.
     """
 
-    _attr_assumed_state = True
     _attr_entity_category = EntityCategory.CONFIG
-    _attr_entity_registry_enabled_default = False
+    _config_key: str = ""
 
-    def __init__(self, coordinator: DeyeCloudCoordinator, device_sn: str) -> None:
-        super().__init__(coordinator, device_sn)
-        self._attr_unique_id = f"{device_sn}_solar_sell"
-        self.entity_id = f"switch.{ID_PREFIX}_solar_sell"
-        self._attr_translation_key = "solar_sell"
-        self._attr_is_on = None
+    @property
+    def is_on(self) -> bool | None:
+        action = self.coordinator.pending_value(
+            self._device_sn,
+            self._config_key,
+            self._device.get("config", {}).get(self._config_key),
+        )
+        if action is None:
+            return None
+        return str(action).lower() == "on"
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         await self._set(True)
@@ -72,22 +74,57 @@ class DeyeSolarSellSwitch(DeyeDeviceEntity, SwitchEntity):
 
     async def _set(self, enabled: bool) -> None:
         try:
-            await self.coordinator.client.async_set_solar_sell(self._device_sn, enabled)
+            await self._send(enabled)
         except DeyeCloudApiError as err:
             raise rejected(self.name, err) from err
-        self._attr_is_on = enabled
+        self.coordinator.set_pending(self._device_sn, self._config_key, "on" if enabled else "off")
         self.async_write_ha_state()
         await self.coordinator.async_request_config_refresh()
 
+    async def _send(self, enabled: bool) -> None:
+        raise NotImplementedError
 
-class DeyeTouSwitch(DeyeDeviceEntity, SwitchEntity):
+
+class DeyeSolarSellSwitch(_DeyeConfigSwitch):
+    """Toggle grid export (solar sell).
+
+    Only inverters with a battery answer the read that holds its state; on the
+    others this is an assumed-state switch reflecting the last command sent.
+    """
+
+    _attr_entity_registry_enabled_default = False
+    _config_key = "solarSellAction"
+
+    def __init__(self, coordinator: DeyeCloudCoordinator, device_sn: str) -> None:
+        super().__init__(coordinator, device_sn)
+        self._attr_unique_id = f"{device_sn}_solar_sell"
+        self.entity_id = f"switch.{ID_PREFIX}_solar_sell"
+        self._attr_translation_key = "solar_sell"
+        self._last: bool | None = None
+
+    @property
+    def assumed_state(self) -> bool:
+        return not config_has(self._device, self._config_key)
+
+    @property
+    def is_on(self) -> bool | None:
+        if self.assumed_state:
+            return self._last
+        return super().is_on
+
+    async def _send(self, enabled: bool) -> None:
+        await self.coordinator.client.async_set_solar_sell(self._device_sn, enabled)
+        self._last = enabled
+
+
+class DeyeTouSwitch(_DeyeConfigSwitch):
     """Enable or disable the time-of-use schedule.
 
     The active 6-slot schedule is exposed as a state attribute for readback and
     templating; set it with the deye_cloud.set_tou_schedule service.
     """
 
-    _attr_entity_category = EntityCategory.CONFIG
+    _config_key = "touAction"
     # The slot entities already record the table's history.
     _unrecorded_attributes = frozenset({"schedule"})
 
@@ -99,33 +136,12 @@ class DeyeTouSwitch(DeyeDeviceEntity, SwitchEntity):
         self._attr_translation_key = "time_of_use"
 
     @property
-    def is_on(self) -> bool | None:
-        action = self.coordinator.pending_value(
-            self._device_sn, "touAction", self._device.get("config", {}).get("touAction")
-        )
-        if action is None:
-            return None
-        return str(action).lower() == "on"
-
-    @property
     def extra_state_attributes(self) -> dict[str, Any]:
         # Includes edits that have not read back yet, like the slot entities.
         return {"schedule": effective_tou_slots(self.coordinator, self._device_sn) or None}
 
-    async def async_turn_on(self, **kwargs: Any) -> None:
-        await self._set(True)
-
-    async def async_turn_off(self, **kwargs: Any) -> None:
-        await self._set(False)
-
-    async def _set(self, enabled: bool) -> None:
-        try:
-            await self.coordinator.client.async_set_tou_switch(self._device_sn, enabled)
-        except DeyeCloudApiError as err:
-            raise rejected(self.name, err) from err
-        self.coordinator.set_pending(self._device_sn, "touAction", "on" if enabled else "off")
-        self.async_write_ha_state()
-        await self.coordinator.async_request_config_refresh()
+    async def _send(self, enabled: bool) -> None:
+        await self.coordinator.client.async_set_tou_switch(self._device_sn, enabled)
 
 
 class _DeyeTouSlotSwitch(DeyeTouSlotEntity, SwitchEntity):

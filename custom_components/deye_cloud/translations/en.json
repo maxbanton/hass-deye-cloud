@@ -88,6 +88,9 @@
   },
   "entity": {
     "number": {
+      "grid_charge_current": {
+        "name": "Grid Charge Current"
+      },
       "low_battery_soc": {
         "name": "Low Battery SOC"
       },

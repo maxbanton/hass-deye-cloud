@@ -58,6 +58,11 @@ ORDER_STATUS_PENDING = (0, 100)
 ORDER_POLL_INTERVAL = 2
 ORDER_POLL_TIMEOUT = 30
 
+# /strategy/dynamicControl/read is an order too: readResult answers "Order is
+# sending" until the inverter replies, which takes about five seconds.
+_ORDER_SENDING_CODES = {2104013, "2104013"}
+DYNAMIC_READ_DELAY = 5
+
 
 def _normalize_tou_time(value: Any) -> str:
     """Return a TOU slot time as 'HH:mm' (the update endpoint's required format).
@@ -78,6 +83,10 @@ class DeyeCloudApiError(Exception):
 
 class DeyeCloudAuthError(DeyeCloudApiError):
     """Authentication error."""
+
+
+class DeyeCloudOrderPending(DeyeCloudApiError):
+    """The inverter has not answered an order yet."""
 
 
 class DeyeCloudRateLimitError(DeyeCloudApiError):
@@ -160,6 +169,8 @@ class DeyeCloudClient:
                 raise DeyeCloudAuthError(msg)
             if _is_rate_limit(str(msg)):
                 raise DeyeCloudRateLimitError(f"{msg} (code {code})")
+            if code in _ORDER_SENDING_CODES:
+                raise DeyeCloudOrderPending(f"{msg} (code {code})")
             raise DeyeCloudApiError(f"{msg} (code {code})")
 
         inner = result.get("data")
@@ -277,6 +288,31 @@ class DeyeCloudClient:
     async def async_get_tou(self, device_sn: str) -> dict[str, Any]:
         return await self._request("POST", "/config/tou", data={"deviceSn": device_sn})
 
+    async def async_get_dynamic_config(self, device_sn: str) -> dict[str, Any]:
+        """Settings read live from the inverter, some of which no /config endpoint has.
+
+        Grid charge current and solar sell are only readable here.
+        """
+        result = await self._request(
+            "POST", "/strategy/dynamicControl/read", data={"deviceSn": device_sn}
+        )
+        order_id = result.get("orderId") if isinstance(result, dict) else None
+        if not order_id:
+            raise DeyeCloudApiError("Settings read was not accepted")
+        deadline = time.time() + ORDER_POLL_TIMEOUT
+        await asyncio.sleep(DYNAMIC_READ_DELAY)
+        while True:
+            try:
+                result = await self._request(
+                    "POST", "/strategy/dynamicControl/readResult", data={"orderId": order_id}
+                )
+            except DeyeCloudOrderPending:
+                if time.time() >= deadline:
+                    raise DeyeCloudApiError(f"Settings read {order_id} timed out") from None
+                await asyncio.sleep(ORDER_POLL_INTERVAL)
+                continue
+            return {k: v for k, v in result.items() if k not in _ENVELOPE_KEYS}
+
     # --- control (asynchronous order) endpoints ------------------------------
 
     async def _confirm_order(self, result: Any) -> Any:
@@ -328,6 +364,16 @@ class DeyeCloudClient:
             "POST", "/order/battery/parameter/update",
             data={"deviceSn": device_sn, "paramterType": param_type, "value": value},
         )
+        return await self._confirm_order(result)
+
+    async def async_set_peak_shaving(
+        self, device_sn: str, enabled: bool, power: int | None = None
+    ) -> Any:
+        """Switch grid peak shaving; without ``power`` the inverter keeps its limit."""
+        data: dict[str, Any] = {"deviceSn": device_sn, "action": "on" if enabled else "off"}
+        if power is not None:
+            data["power"] = power
+        result = await self._request("POST", "/order/gridPeakShaving/control", data=data)
         return await self._confirm_order(result)
 
     async def async_set_power_param(
