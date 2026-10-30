@@ -255,8 +255,8 @@ hourly, and inverter settings (system, battery, grid charge, Time Of Use) only
 every few minutes, plus a short burst of re-reads right after this integration
 writes a setting.
 
-Two intervals are adjustable under **Settings > Devices & Services > Deye Cloud
-> Configure**:
+Two intervals are adjustable under
+**Settings > Devices & Services > Deye Cloud > Configure**:
 
 | Option | Default | What it controls |
 |--------|---------|------------------|
