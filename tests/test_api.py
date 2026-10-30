@@ -1,6 +1,7 @@
 """Deye Cloud OpenAPI client: sign-in, errors, rate limits and control orders."""
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import itertools
 from http import HTTPStatus
@@ -10,6 +11,7 @@ import aiohttp
 import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.loader import async_get_integration
 from pytest_homeassistant_custom_component.test_util.aiohttp import (
     AiohttpClientMocker,
     AiohttpClientMockResponse,
@@ -19,10 +21,13 @@ from custom_components.deye_cloud import build_client
 from custom_components.deye_cloud.api import (
     DeyeCloudApiError,
     DeyeCloudAuthError,
+    DeyeCloudBusyError,
     DeyeCloudClient,
+    DeyeCloudOfflineError,
+    DeyeCloudPermissionError,
     DeyeCloudRateLimitError,
 )
-from custom_components.deye_cloud.const import REGIONS
+from custom_components.deye_cloud.const import DOMAIN, REGIONS
 
 from .test_init import ENTRY_DATA
 
@@ -33,7 +38,10 @@ TOKEN = {**OK, "accessToken": "Bearer tok-1", "expiresIn": 5184000}
 
 
 @pytest.fixture
-def client(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker) -> DeyeCloudClient:
+async def client(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, enable_custom_integrations
+) -> DeyeCloudClient:
+    await async_get_integration(hass, DOMAIN)
     return build_client(hass, ENTRY_DATA)
 
 
@@ -77,6 +85,18 @@ async def test_sign_in_sends_the_app_id_and_a_hashed_password(
     (list_call,) = _calls(signed_in, "/station/listWithDevice")
     # The token comes back with its scheme; it must not be doubled in the header.
     assert list_call[3]["Authorization"] == "Bearer tok-1"
+
+
+async def test_calls_identify_the_integration(
+    client: DeyeCloudClient, signed_in: AiohttpClientMocker
+) -> None:
+    signed_in.post(f"{BASE}/station/listWithDevice", json={**OK, "stationList": []})
+
+    await client.async_get_stations_with_devices()
+
+    for call in signed_in.mock_calls:
+        assert call[3]["User-Agent"].startswith("hass-deye-cloud/")
+        assert "HomeAssistant/" in call[3]["User-Agent"]
 
 
 async def test_token_is_reused_until_it_nears_expiry(
@@ -142,10 +162,22 @@ async def test_sign_in_without_a_token_is_an_auth_error(
 async def test_sign_in_over_quota_is_a_rate_limit(
     client: DeyeCloudClient, aioclient_mock: AiohttpClientMocker
 ) -> None:
-    aioclient_mock.post(TOKEN_URL, json={"code": "2101030", "msg": "Daily quota exceeded"})
+    aioclient_mock.post(TOKEN_URL, json={"code": "2101045", "msg": "quota exceeded"})
 
     with pytest.raises(DeyeCloudRateLimitError):
         await client.async_obtain_token()
+
+
+async def test_sign_in_during_an_outage_is_not_an_auth_error(
+    client: DeyeCloudClient, aioclient_mock: AiohttpClientMocker
+) -> None:
+    aioclient_mock.post(
+        TOKEN_URL, json={"code": "3201001", "msg": "Service Currently Unavailable"}
+    )
+
+    with pytest.raises(DeyeCloudApiError, match="code 3201001") as err:
+        await client.async_obtain_token()
+    assert type(err.value) is DeyeCloudApiError
 
 
 async def test_sign_in_http_429_carries_retry_after(
@@ -224,26 +256,58 @@ async def test_transport_failures_are_api_errors(
     assert type(err.value) is DeyeCloudApiError
 
 
-@pytest.mark.parametrize("code", [1001, "2101017"])
-async def test_revoked_token_is_an_auth_error(
+@pytest.mark.parametrize("code", [1001, "2101025", "2101028"])
+async def test_rejected_account_is_an_auth_error(
     client: DeyeCloudClient, signed_in: AiohttpClientMocker, code
 ) -> None:
-    signed_in.post(f"{BASE}/station/latest", json={"code": code, "msg": "token invalid"})
+    signed_in.post(f"{BASE}/station/latest", json={"code": code, "msg": "auth failed"})
 
-    with pytest.raises(DeyeCloudAuthError, match="token invalid"):
+    with pytest.raises(DeyeCloudAuthError, match="auth failed"):
         await client.async_get_station_latest("1")
 
 
-async def test_rate_limit_message_in_the_body_is_a_rate_limit(
-    client: DeyeCloudClient, signed_in: AiohttpClientMocker
+@pytest.mark.parametrize("code", ["2101017", 2101019])
+async def test_invalid_token_signs_in_again_and_retries(
+    client: DeyeCloudClient, signed_in: AiohttpClientMocker, code
 ) -> None:
     signed_in.post(
-        f"{BASE}/station/latest", json={"code": "2101040", "msg": "Request too frequent"}
+        f"{BASE}/station/latest",
+        side_effect=_sequence({"code": code, "msg": "auth invalid token"}, {**OK, "gridPower": 5}),
     )
 
-    with pytest.raises(DeyeCloudRateLimitError, match="code 2101040") as err:
+    assert await client.async_get_station_latest("1") == {"gridPower": 5}
+    assert len(_calls(signed_in, "/account/token")) == 2
+
+
+async def test_token_still_invalid_after_signing_in_again_is_an_auth_error(
+    client: DeyeCloudClient, signed_in: AiohttpClientMocker
+) -> None:
+    signed_in.post(f"{BASE}/station/latest", json={"code": "2101019", "msg": "invalid token"})
+
+    with pytest.raises(DeyeCloudAuthError, match="invalid token"):
+        await client.async_get_station_latest("1")
+    assert len(_calls(signed_in, "/station/latest")) == 2
+
+
+@pytest.mark.parametrize("code", ["1001001", "2101002", 2101010, "2101045"])
+async def test_rate_limit_codes_are_rate_limits(
+    client: DeyeCloudClient, signed_in: AiohttpClientMocker, code
+) -> None:
+    signed_in.post(f"{BASE}/station/latest", json={"code": code, "msg": "limited"})
+
+    with pytest.raises(DeyeCloudRateLimitError, match=f"code {code}") as err:
         await client.async_get_station_latest("1")
     assert err.value.retry_after is None
+
+
+async def test_non_numeric_error_code_is_an_api_error(
+    client: DeyeCloudClient, signed_in: AiohttpClientMocker
+) -> None:
+    signed_in.post(f"{BASE}/station/latest", json={"code": "E1", "msg": "odd"})
+
+    with pytest.raises(DeyeCloudApiError, match=r"odd \(code E1\)") as err:
+        await client.async_get_station_latest("1")
+    assert type(err.value) is DeyeCloudApiError
 
 
 async def test_other_error_codes_keep_the_cloud_message(
@@ -254,6 +318,24 @@ async def test_other_error_codes_keep_the_cloud_message(
     with pytest.raises(DeyeCloudApiError, match=r"device offline \(code 2104001\)") as err:
         await client.async_get_station_latest("1")
     assert type(err.value) is DeyeCloudApiError
+
+
+@pytest.mark.parametrize(
+    "code,error",
+    [
+        ("2104004", DeyeCloudBusyError),
+        ("2101027", DeyeCloudPermissionError),
+        (2101042, DeyeCloudPermissionError),
+        ("2104006", DeyeCloudOfflineError),
+    ],
+)
+async def test_busy_and_permission_codes_have_their_own_errors(
+    client: DeyeCloudClient, signed_in: AiohttpClientMocker, code, error
+) -> None:
+    signed_in.post(f"{BASE}/order/sys/solarSell/control", json={"code": code, "msg": "no"})
+
+    with pytest.raises(error, match=f"code {code}"):
+        await client.async_set_solar_sell("SN1", True)
 
 
 # --- reads -------------------------------------------------------------------
@@ -554,6 +636,37 @@ async def test_order_still_pending_after_the_timeout_raises(
         await client.async_set_solar_sell("SN1", True)
 
     assert _calls(signed_in, "/order/42")
+
+
+async def test_commands_to_one_inverter_wait_for_each_other(client: DeyeCloudClient) -> None:
+    sent: list[tuple[str, str]] = []
+    release = asyncio.Event()
+
+    async def request(method, endpoint, data=None, require_auth=True):
+        if "deviceSn" not in data:
+            return {}
+        sent.append((endpoint, data["deviceSn"]))
+        if endpoint == "/strategy/dynamicControl/read":
+            await release.wait()
+            return {"orderId": 7}
+        return {}
+
+    with (
+        patch.object(client, "_request", side_effect=request),
+        patch("custom_components.deye_cloud.api.DYNAMIC_READ_DELAY", 0),
+    ):
+        read = asyncio.create_task(client.async_get_dynamic_config("SN1"))
+        write = asyncio.create_task(client.async_set_solar_sell("SN1", True))
+        other = asyncio.create_task(client.async_set_solar_sell("SN2", True))
+        await other
+        assert sent == [
+            ("/strategy/dynamicControl/read", "SN1"),
+            ("/order/sys/solarSell/control", "SN2"),
+        ]
+        release.set()
+        await asyncio.gather(read, write)
+
+    assert sent[-1] == ("/order/sys/solarSell/control", "SN1")
 
 
 # --- sessions ----------------------------------------------------------------

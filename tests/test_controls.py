@@ -6,7 +6,12 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.deye_cloud.api import DeyeCloudApiError
+from custom_components.deye_cloud.api import (
+    DeyeCloudApiError,
+    DeyeCloudBusyError,
+    DeyeCloudOfflineError,
+    DeyeCloudPermissionError,
+)
 from custom_components.deye_cloud.const import DOMAIN
 
 from .test_discovery import HYBRID
@@ -129,6 +134,25 @@ async def test_refused_energy_pattern_keeps_the_current_one(
             hass, "select", "select_option", "select.deye_energy_pattern", option="Battery First"
         )
     assert hass.states.get("select.deye_energy_pattern").state == "Load First"
+
+
+@pytest.mark.parametrize(
+    "error,message",
+    [
+        (DeyeCloudBusyError("busy"), "still carrying out another command"),
+        (DeyeCloudPermissionError("denied"), "no permission to control this inverter"),
+        (DeyeCloudOfflineError("offline"), "inverter is offline"),
+    ],
+)
+async def test_busy_or_forbidden_inverter_says_so(
+    hass: HomeAssistant, entry, writes, error, message
+) -> None:
+    writes["async_set_energy_pattern"].side_effect = error
+
+    with pytest.raises(HomeAssistantError, match=message):
+        await _call(
+            hass, "select", "select_option", "select.deye_energy_pattern", option="Battery First"
+        )
 
 
 # --- switches ----------------------------------------------------------------

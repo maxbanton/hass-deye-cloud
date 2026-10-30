@@ -37,7 +37,7 @@ def auto_enable_custom_integrations(enable_custom_integrations):
 
 def _connection(result: bool):
     return patch(
-        "custom_components.deye_cloud.config_flow.DeyeCloudClient.async_test_connection",
+        "custom_components.deye_cloud.DeyeCloudClient.async_test_connection",
         return_value=result,
     )
 
@@ -77,7 +77,7 @@ async def test_user_flow_uses_region_endpoint(
     )
     with (
         patch(
-            "custom_components.deye_cloud.config_flow.DeyeCloudClient"
+            "custom_components.deye_cloud.DeyeCloudClient"
         ) as client_cls,
         patch("custom_components.deye_cloud.async_setup_entry", return_value=True),
     ):

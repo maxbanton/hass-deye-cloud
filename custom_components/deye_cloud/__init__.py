@@ -6,8 +6,9 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.aiohttp_client import SERVER_SOFTWARE, async_get_clientsession
 from homeassistant.helpers.typing import ConfigType
+from homeassistant.loader import async_get_loaded_integration
 
 from .api import DeyeCloudClient
 from .card import async_add_card_resource, async_remove_card_resource, async_serve_card
@@ -37,6 +38,7 @@ type DeyeCloudConfigEntry = ConfigEntry[DeyeCloudCoordinator]
 def build_client(hass: HomeAssistant, data: dict) -> DeyeCloudClient:
     """Build an API client from config entry (or config flow) data."""
     region = data.get(CONF_REGION, "eu")
+    version = async_get_loaded_integration(hass, DOMAIN).version
     return DeyeCloudClient(
         base_url=REGIONS.get(region, REGIONS["eu"])["base_url"],
         app_id=data[CONF_APP_ID],
@@ -44,6 +46,7 @@ def build_client(hass: HomeAssistant, data: dict) -> DeyeCloudClient:
         email=data[CONF_EMAIL],
         password=data[CONF_PASSWORD],
         session=async_get_clientsession(hass),
+        user_agent=f"hass-deye-cloud/{version} {SERVER_SOFTWARE}",
     )
 
 
