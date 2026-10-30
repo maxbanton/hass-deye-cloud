@@ -14,25 +14,15 @@ _LOGGER = logging.getLogger(__name__)
 
 API_TIMEOUT = 30
 
-# Response codes the API uses to signal success.
-_SUCCESS_CODES = {0, 1000000, 1106000, "0", "1000000", "1106000"}
+# Response codes from the developer portal's code table.
+_SUCCESS_CODES = {0, 1000000, 1106000}
 _ENVELOPE_KEYS = {"code", "msg", "success", "requestId"}
-_AUTH_ERROR_CODES = {1001, 1002, 1003, 2101017, "1001", "1002", "1003", "2101017"}
-
-# Deye has announced usage quotas and rate limits but not yet published the
-# error codes they will be reported with, so body-level detection is by message
-# text; HTTP 429 is handled directly.
-_RATE_LIMIT_HINTS = (
-    "rate limit",
-    "ratelimit",
-    "too many request",
-    "too frequent",
-    "request too fast",
-    "quota",
-    "call limit",
-    "request limit",
-    "api limit",
-)
+_AUTH_ERROR_CODES = {1001, 1002, 1003, 2101018, 2101021, 2101025, 2101028}
+# The token expired or was replaced by a newer sign-in; signing in again fixes it.
+_TOKEN_CODES = {2101017, 2101019}
+_RATE_LIMIT_CODES = {1001001, 2101002, 2101010, 2101045}
+_SERVER_ERROR_CODES = {3201001, 3501004}
+_OFFLINE_CODES = {2104006}
 
 
 def _retry_after(headers: Any) -> float | None:
@@ -47,9 +37,11 @@ def _retry_after(headers: Any) -> float | None:
         return None
 
 
-def _is_rate_limit(message: str) -> bool:
-    lowered = message.lower()
-    return any(hint in lowered for hint in _RATE_LIMIT_HINTS)
+def _code(value: Any) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 # Control ("order") endpoints are asynchronous: they return an orderId and the
 # real outcome must be read from GET /order/{orderId}.
@@ -60,11 +52,11 @@ ORDER_POLL_TIMEOUT = 30
 
 # /strategy/dynamicControl/read is an order too: readResult answers "Order is
 # sending" until the inverter replies, which takes about five seconds.
-_ORDER_SENDING_CODES = {2104013, "2104013"}
+_ORDER_SENDING_CODES = {2104013}
 # An inverter runs one command at a time and refuses a second one meanwhile.
-_BUSY_CODES = {2104004, "2104004"}
+_BUSY_CODES = {2104004}
 # Control permission is granted per device, not per station.
-_NO_PERMISSION_CODES = {2101027, "2101027"}
+_NO_PERMISSION_CODES = {2101027, 2101042}
 DYNAMIC_READ_DELAY = 5
 
 
@@ -87,6 +79,14 @@ class DeyeCloudApiError(Exception):
 
 class DeyeCloudAuthError(DeyeCloudApiError):
     """Authentication error."""
+
+
+class DeyeCloudTokenError(DeyeCloudAuthError):
+    """The token is no longer valid, though the credentials may still be."""
+
+
+class DeyeCloudOfflineError(DeyeCloudApiError):
+    """The device is offline."""
 
 
 class DeyeCloudOrderPending(DeyeCloudApiError):
@@ -157,6 +157,19 @@ class DeyeCloudClient:
         data: dict[str, Any] | None = None,
         require_auth: bool = True,
     ) -> Any:
+        try:
+            return await self._send(method, endpoint, data, require_auth)
+        except DeyeCloudTokenError:
+            self._token = None
+            return await self._send(method, endpoint, data, require_auth)
+
+    async def _send(
+        self,
+        method: str,
+        endpoint: str,
+        data: dict[str, Any] | None,
+        require_auth: bool,
+    ) -> Any:
         session = await self._get_session()
         url = f"{self.base_url}{endpoint}"
         payload = data or {}
@@ -188,19 +201,24 @@ class DeyeCloudClient:
             raise DeyeCloudApiError("Request timed out") from err
 
         code = result.get("code")
-        if code is not None and code not in _SUCCESS_CODES:
+        if code is not None and _code(code) not in _SUCCESS_CODES:
             msg = result.get("msg", "Unknown error")
-            if code in _AUTH_ERROR_CODES:
+            number = _code(code)
+            if number in _AUTH_ERROR_CODES:
                 raise DeyeCloudAuthError(msg)
-            if _is_rate_limit(str(msg)):
-                raise DeyeCloudRateLimitError(f"{msg} (code {code})")
-            if code in _ORDER_SENDING_CODES:
-                raise DeyeCloudOrderPending(f"{msg} (code {code})")
-            if code in _BUSY_CODES:
-                raise DeyeCloudBusyError(f"{msg} (code {code})")
-            if code in _NO_PERMISSION_CODES:
-                raise DeyeCloudPermissionError(f"{msg} (code {code})")
-            raise DeyeCloudApiError(f"{msg} (code {code})")
+            error: type[DeyeCloudApiError] = DeyeCloudApiError
+            for codes, error_type in (
+                (_TOKEN_CODES, DeyeCloudTokenError),
+                (_RATE_LIMIT_CODES, DeyeCloudRateLimitError),
+                (_ORDER_SENDING_CODES, DeyeCloudOrderPending),
+                (_BUSY_CODES, DeyeCloudBusyError),
+                (_NO_PERMISSION_CODES, DeyeCloudPermissionError),
+                (_OFFLINE_CODES, DeyeCloudOfflineError),
+            ):
+                if number in codes:
+                    error = error_type
+                    break
+            raise error(f"{msg} (code {code})")
 
         inner = result.get("data")
         return inner if inner is not None else result
@@ -234,10 +252,13 @@ class DeyeCloudClient:
         except TimeoutError as err:
             raise DeyeCloudApiError("Request timed out") from err
 
-        if result.get("code") not in _SUCCESS_CODES:
-            msg = str(result.get("msg", "Authentication failed"))
-            if _is_rate_limit(msg):
+        code = result.get("code")
+        if _code(code) not in _SUCCESS_CODES:
+            msg = f"{result.get('msg', 'Authentication failed')} (code {code})"
+            if _code(code) in _RATE_LIMIT_CODES:
                 raise DeyeCloudRateLimitError(msg)
+            if _code(code) in _SERVER_ERROR_CODES:
+                raise DeyeCloudApiError(msg)
             raise DeyeCloudAuthError(msg)
 
         token = result.get("accessToken")

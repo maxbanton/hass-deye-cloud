@@ -9,6 +9,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.deye_cloud.api import (
     DeyeCloudApiError,
     DeyeCloudBusyError,
+    DeyeCloudOfflineError,
     DeyeCloudPermissionError,
 )
 from custom_components.deye_cloud.const import DOMAIN
@@ -140,6 +141,7 @@ async def test_refused_energy_pattern_keeps_the_current_one(
     [
         (DeyeCloudBusyError("busy"), "still carrying out another command"),
         (DeyeCloudPermissionError("denied"), "no permission to control this inverter"),
+        (DeyeCloudOfflineError("offline"), "inverter is offline"),
     ],
 )
 async def test_busy_or_forbidden_inverter_says_so(

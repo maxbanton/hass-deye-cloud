@@ -6,7 +6,6 @@ import pytest
 from custom_components.deye_cloud.api import (
     DeyeCloudApiError,
     DeyeCloudRateLimitError,
-    _is_rate_limit,
     _retry_after,
 )
 from custom_components.deye_cloud.const import (
@@ -305,34 +304,7 @@ def test_backoff_is_capped():
     assert backoff == 1800
 
 
-# --- rate-limit detection ----------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    "message",
-    [
-        "Rate limit exceeded",
-        "API rate limit, retry later",
-        "Too many requests",
-        "request too frequent",
-        "daily quota used up",
-    ],
-)
-def test_rate_limit_messages_are_detected(message):
-    assert _is_rate_limit(message)
-
-
-@pytest.mark.parametrize(
-    "message",
-    [
-        "value exceeds the allowed range",
-        "device offline",
-        "Control order failed with status 102",
-        "Invalid parameter",
-    ],
-)
-def test_ordinary_errors_are_not_treated_as_rate_limits(message):
-    assert not _is_rate_limit(message)
+# --- Retry-After -------------------------------------------------------------
 
 
 @pytest.mark.parametrize(

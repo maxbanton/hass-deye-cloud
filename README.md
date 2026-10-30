@@ -247,12 +247,13 @@ Device Monitoring* and *Commission Control* permissions, then provide:
 
 ### Polling and API usage
 
-Deye has announced usage tracking, quotas and rate limits for the Cloud
-OpenAPI, so this integration is deliberately frugal with calls. It polls in
-tiers: measurements every cycle, the station and device inventory hourly, and
-inverter settings (system, battery, grid charge, Time Of Use) only every few
-minutes, plus a short burst of re-reads right after this integration writes a
-setting.
+Deye meters the Cloud OpenAPI per app: 100,000 calls a month are free, and the
+developer portal's [Usage](https://developer.deyecloud.com/usage) page shows how
+many your app has made. This integration is deliberately frugal with calls. It
+polls in tiers: measurements every cycle, the station and device inventory
+hourly, and inverter settings (system, battery, grid charge, Time Of Use) only
+every few minutes, plus a short burst of re-reads right after this integration
+writes a setting.
 
 Two intervals are adjustable under **Settings > Devices & Services > Deye Cloud
 > Configure**:
@@ -262,13 +263,15 @@ Two intervals are adjustable under **Settings > Devices & Services > Deye Cloud
 | Measurement poll interval | 180 s | How often live station and device data is read |
 | Inverter settings poll interval | 15 min | How often system, battery, grid charge and Time Of Use settings are re-read |
 
-Loggers upload to the Deye Cloud only every 3 to 5 minutes, so polling faster
-than the default gains little and costs quota. With the defaults and a single
-inverter with a battery the integration makes roughly 1,500 API calls per day; at
-a 5 minute measurement interval, roughly 1,100.
+Loggers upload to the Deye Cloud every 1 to 5 minutes, depending on the logger,
+and a reading shows up in the API about a minute after that, so polling faster
+than every 2 minutes gains little and costs quota. A single inverter with a
+battery polled every 2 minutes makes about 1,600 calls a day, around half the
+free quota; the 3 minute default makes fewer.
 
-If the API answers with a rate limit, polling backs off automatically (doubling
-up to 30 minutes) and returns to normal once the limit clears.
+If the API answers with a rate limit or reports the quota used up, polling backs
+off automatically (doubling up to 30 minutes) and returns to normal once the
+limit clears.
 
 ## Reporting a problem
 
