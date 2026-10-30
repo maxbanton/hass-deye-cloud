@@ -61,6 +61,10 @@ ORDER_POLL_TIMEOUT = 30
 # /strategy/dynamicControl/read is an order too: readResult answers "Order is
 # sending" until the inverter replies, which takes about five seconds.
 _ORDER_SENDING_CODES = {2104013, "2104013"}
+# An inverter runs one command at a time and refuses a second one meanwhile.
+_BUSY_CODES = {2104004, "2104004"}
+# Control permission is granted per device, not per station.
+_NO_PERMISSION_CODES = {2101027, "2101027"}
 DYNAMIC_READ_DELAY = 5
 
 
@@ -89,6 +93,14 @@ class DeyeCloudOrderPending(DeyeCloudApiError):
     """The inverter has not answered an order yet."""
 
 
+class DeyeCloudBusyError(DeyeCloudApiError):
+    """The inverter is still running another command."""
+
+
+class DeyeCloudPermissionError(DeyeCloudApiError):
+    """The account may not control this device."""
+
+
 class DeyeCloudRateLimitError(DeyeCloudApiError):
     """The API rejected the call for exceeding a quota or rate limit."""
 
@@ -108,8 +120,10 @@ class DeyeCloudClient:
         email: str,
         password: str,
         session: aiohttp.ClientSession | None = None,
+        user_agent: str | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
+        self._user_agent = user_agent
         self._app_id = app_id
         self._app_secret = app_secret
         self._email = email
@@ -118,6 +132,17 @@ class DeyeCloudClient:
         self._own_session = session is None
         self._token: str | None = None
         self._token_expiry = 0.0
+        self._command_locks: dict[str, asyncio.Lock] = {}
+
+    def _command_lock(self, device_sn: str) -> asyncio.Lock:
+        """Serialize commands to one inverter, which refuses a second while busy."""
+        return self._command_locks.setdefault(device_sn, asyncio.Lock())
+
+    def _headers(self) -> dict[str, str]:
+        headers = {"Content-Type": "application/json"}
+        if self._user_agent:
+            headers["User-Agent"] = self._user_agent
+        return headers
 
     async def _get_session(self) -> aiohttp.ClientSession:
         if self._session is None:
@@ -135,7 +160,7 @@ class DeyeCloudClient:
         session = await self._get_session()
         url = f"{self.base_url}{endpoint}"
         payload = data or {}
-        headers = {"Content-Type": "application/json"}
+        headers = self._headers()
 
         if require_auth:
             if not self._token or time.time() >= self._token_expiry:
@@ -171,6 +196,10 @@ class DeyeCloudClient:
                 raise DeyeCloudRateLimitError(f"{msg} (code {code})")
             if code in _ORDER_SENDING_CODES:
                 raise DeyeCloudOrderPending(f"{msg} (code {code})")
+            if code in _BUSY_CODES:
+                raise DeyeCloudBusyError(f"{msg} (code {code})")
+            if code in _NO_PERMISSION_CODES:
+                raise DeyeCloudPermissionError(f"{msg} (code {code})")
             raise DeyeCloudApiError(f"{msg} (code {code})")
 
         inner = result.get("data")
@@ -191,9 +220,7 @@ class DeyeCloudClient:
         }
         try:
             async with asyncio.timeout(API_TIMEOUT):
-                async with session.post(
-                    url, json=body, headers={"Content-Type": "application/json"}
-                ) as response:
+                async with session.post(url, json=body, headers=self._headers()) as response:
                     response.raise_for_status()
                     result = await response.json()
         except aiohttp.ClientResponseError as err:
@@ -293,6 +320,10 @@ class DeyeCloudClient:
 
         Grid charge current and solar sell are only readable here.
         """
+        async with self._command_lock(device_sn):
+            return await self._read_dynamic(device_sn)
+
+    async def _read_dynamic(self, device_sn: str) -> dict[str, Any]:
         result = await self._request(
             "POST", "/strategy/dynamicControl/read", data={"deviceSn": device_sn}
         )
@@ -315,6 +346,11 @@ class DeyeCloudClient:
 
     # --- control (asynchronous order) endpoints ------------------------------
 
+    async def _order(self, endpoint: str, data: dict[str, Any]) -> Any:
+        """Send a control order and wait for the inverter to carry it out."""
+        async with self._command_lock(data["deviceSn"]):
+            return await self._confirm_order(await self._request("POST", endpoint, data=data))
+
     async def _confirm_order(self, result: Any) -> Any:
         """Poll a control order until success (666), else raise."""
         order_id = result.get("orderId") if isinstance(result, dict) else None
@@ -336,35 +372,31 @@ class DeyeCloudClient:
         raise DeyeCloudApiError(f"Control order {order_id} timed out")
 
     async def async_set_work_mode(self, device_sn: str, work_mode: str) -> Any:
-        result = await self._request(
-            "POST", "/order/sys/workMode/update",
-            data={"deviceSn": device_sn, "workMode": work_mode},
+        return await self._order(
+            "/order/sys/workMode/update",
+            {"deviceSn": device_sn, "workMode": work_mode},
         )
-        return await self._confirm_order(result)
 
     async def async_set_energy_pattern(self, device_sn: str, energy_pattern: str) -> Any:
-        result = await self._request(
-            "POST", "/order/sys/energyPattern/update",
-            data={"deviceSn": device_sn, "energyPattern": energy_pattern},
+        return await self._order(
+            "/order/sys/energyPattern/update",
+            {"deviceSn": device_sn, "energyPattern": energy_pattern},
         )
-        return await self._confirm_order(result)
 
     async def async_set_solar_sell(self, device_sn: str, enabled: bool) -> Any:
-        result = await self._request(
-            "POST", "/order/sys/solarSell/control",
-            data={"deviceSn": device_sn, "action": "on" if enabled else "off"},
+        return await self._order(
+            "/order/sys/solarSell/control",
+            {"deviceSn": device_sn, "action": "on" if enabled else "off"},
         )
-        return await self._confirm_order(result)
 
     async def async_set_battery_param(
         self, device_sn: str, param_type: str, value: int
     ) -> Any:
         """Set a battery set-point. Note the API field is 'paramterType' (sic)."""
-        result = await self._request(
-            "POST", "/order/battery/parameter/update",
-            data={"deviceSn": device_sn, "paramterType": param_type, "value": value},
+        return await self._order(
+            "/order/battery/parameter/update",
+            {"deviceSn": device_sn, "paramterType": param_type, "value": value},
         )
-        return await self._confirm_order(result)
 
     async def async_set_peak_shaving(
         self, device_sn: str, enabled: bool, power: int | None = None
@@ -373,18 +405,16 @@ class DeyeCloudClient:
         data: dict[str, Any] = {"deviceSn": device_sn, "action": "on" if enabled else "off"}
         if power is not None:
             data["power"] = power
-        result = await self._request("POST", "/order/gridPeakShaving/control", data=data)
-        return await self._confirm_order(result)
+        return await self._order("/order/gridPeakShaving/control", data)
 
     async def async_set_power_param(
         self, device_sn: str, power_type: str, value: int
     ) -> Any:
         """Set a system power set-point (e.g. MAX_SELL_POWER)."""
-        result = await self._request(
-            "POST", "/order/sys/power/update",
-            data={"deviceSn": device_sn, "powerType": power_type, "value": value},
+        return await self._order(
+            "/order/sys/power/update",
+            {"deviceSn": device_sn, "powerType": power_type, "value": value},
         )
-        return await self._confirm_order(result)
 
     async def async_set_tou(self, device_sn: str, items: list[dict[str, Any]]) -> Any:
         """Set the time-of-use schedule (all 6 slots, in order).
@@ -396,11 +426,10 @@ class DeyeCloudClient:
         normalized = [dict(item) for item in items]
         for item in normalized:
             item["time"] = _normalize_tou_time(item.get("time"))
-        result = await self._request(
-            "POST", "/order/sys/tou/update",
-            data={"deviceSn": device_sn, "timeUseSettingItems": normalized},
+        return await self._order(
+            "/order/sys/tou/update",
+            {"deviceSn": device_sn, "timeUseSettingItems": normalized},
         )
-        return await self._confirm_order(result)
 
     async def async_set_tou_switch(
         self, device_sn: str, enabled: bool, days: list[str] | None = None
@@ -412,8 +441,7 @@ class DeyeCloudClient:
         }
         if days:
             data["days"] = days
-        result = await self._request("POST", "/order/sys/tou/switch", data=data)
-        return await self._confirm_order(result)
+        return await self._order("/order/sys/tou/switch", data)
 
     async def async_close(self) -> None:
         if self._own_session and self._session:

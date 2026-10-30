@@ -12,9 +12,8 @@ from homeassistant.config_entries import (
     OptionsFlow,
 )
 from homeassistant.core import callback
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .api import DeyeCloudClient
+from . import build_client
 from .const import (
     CONF_APP_ID,
     CONF_APP_SECRET,
@@ -36,15 +35,7 @@ from .const import (
 
 async def _async_credentials_work(hass, data: dict[str, Any]) -> bool:
     """Return True if the given credentials authenticate against Deye Cloud."""
-    client = DeyeCloudClient(
-        base_url=REGIONS[data[CONF_REGION]]["base_url"],
-        app_id=data[CONF_APP_ID],
-        app_secret=data[CONF_APP_SECRET],
-        email=data[CONF_EMAIL],
-        password=data[CONF_PASSWORD],
-        session=async_get_clientsession(hass),
-    )
-    return await client.async_test_connection()
+    return await build_client(hass, data).async_test_connection()
 
 
 class DeyeCloudConfigFlow(ConfigFlow, domain=DOMAIN):

@@ -11,6 +11,7 @@ from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from .api import DeyeCloudBusyError, DeyeCloudPermissionError
 from .const import DOMAIN
 from .coordinator import DeyeCloudCoordinator
 
@@ -18,7 +19,11 @@ from .coordinator import DeyeCloudCoordinator
 def rejected(name: Any, err: Exception, value: float | None = None) -> HomeAssistantError:
     """The error for a command the cloud refused."""
     placeholders = {"name": str(name), "error": str(err)}
-    if value is None:
+    if isinstance(err, DeyeCloudBusyError):
+        key = "device_busy"
+    elif isinstance(err, DeyeCloudPermissionError):
+        key = "no_control_permission"
+    elif value is None:
         key = "command_rejected"
     else:
         key = "value_rejected"
